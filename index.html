@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Python - Interactive Code Tutor</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+</head>
+<body>
+        <div class="bg-animation"></div>
+    <div class="cursor-glow" id="cursorGlow"></div>
+
+    <div class="container">
+                <div class="navbar">
+            <h1>🐍 Visual Python</h1>
+            <div class="btn-group">
+                <a href="tutorial-index.html" target="_blank" style="text-decoration: none;">
+                    <button class="btn-tutorial">📚 Tutorial</button>
+                </a>
+                <button class="btn-run" onclick="runCode()">▶ Run</button>
+                <button class="btn-explain" id="explainBtn" onclick="explainCode()" disabled>💡 Explain</button>
+                <button class="btn-reset" onclick="resetAll()">🔄 Reset</button>
+            </div>
+        </div>
+
+                <div class="main-content">
+                        <div class="panel">
+                <div class="panel-header">📝 Python Code Editor</div>
+                <textarea id="codeEditor" placeholder="# Write your Python code here...
+# Example:
+n = int(input('Enter a number: '))
+factorial = 1
+for i in range(1, n + 1):
+    factorial *= i
+print(f'Factorial of {n} is {factorial}')"></textarea>
+            </div>
+
+                        <div class="panel">
+                <div class="panel-header">💬 Explanation</div>
+                <div class="explanation-content">
+                    <div class="explanation-text empty" id="explanationText">
+                        Click "Explain" after running your code to see step-by-step breakdown! 🚀
+                    </div>
+                </div>
+                <div class="navigation">
+                   <button class="btn-nav" id="readBtn" onclick="toggleSpeech()" disabled>🔊 Read</button>
+                    <button class="btn-nav" id="prevBtn" onclick="previousStep()" disabled>← Previous</button>
+                    <button class="btn-nav" id="nextBtn" onclick="nextStep()" disabled>Next →</button>
+                </div>
+            </div>
+
+                        <div class="panel variable-panel">
+                <div class="panel-header">📦 Variable Boxes</div>
+                <div class="variable-content" id="variablePanel">
+                    <p>Variables will appear here during execution.</p>
+                </div>
+            </div>
+            
+                        <div class="panel output-panel">
+                <div class="panel-header">🖥️ Output / Chalkboard</div>
+                <div id="output">Ready to run your code...</div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

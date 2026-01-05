@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Level 3: Rectangle Area Calculator</title>
+    
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="lvl3styles.css">
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Top Navigation -->
+        <div class="navbar">
+            <h1>📐 Level 3: Rectangle Area Calculator</h1>
+            <div class="controls">
+                <button class="btn-video" id="tutorialVideoBtn">🎬 Watch Tutorial</button>
+                <button class="btn-run" id="runBtn">▶️ Run Code</button>
+                <button class="btn-back" id="backBtn" disabled>⬅️ Back</button>
+                <button class="btn-step" id="stepBtn" disabled>➡️ Next Step</button>
+                <button class="btn-reset" id="resetBtn">🔄 Reset</button>
+            </div>
+        </div>
+
+        <!-- 3-Column Grid -->
+        <div class="main-grid">
+            <!-- Column 1: Code Editor -->
+            <div class="panel">
+                <div class="panel-header">📝 Code Editor</div>
+                <div class="panel-content">
+                    <div class="editor-wrapper">
+                        <textarea id="editor"></textarea>
+                    </div>
+                    <div class="teacher-bubble" id="teacherBubble">
+                        <div class="teacher-icon">🤖</div>
+                        <div class="teacher-text" id="teacherText"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Column 2: Memory Bank -->
+            <div class="panel">
+                <div class="panel-header">🧠 Memory Bank</div>
+                <div class="panel-content">
+                    <div class="step-indicator" id="stepIndicator">Ready to run...</div>
+                    <div class="memory-bank" id="memoryBank"></div>
+                </div>
+            </div>
+
+            <!-- Column 3: Output -->
+            <div class="panel">
+                <div class="panel-header">🖥️ Output</div>
+                <div class="panel-content">
+                    <div class="output-display" id="output">>> Click 'Run Code' to start...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SVG Container for Trail Effects -->
+    <svg id="trailSvg" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999;"></svg>
+
+    <!-- Custom JavaScript -->
+    <script src="lvl3script.js"></script>
+  
+<!-- From HERE BELOW Chatbot component -->    
+    <style>
+    .chat-bot-icon {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 60px;
+        height: 60px;
+        cursor: pointer;
+        z-index: 2000;
+        transition: transform 0.2s;
+    }
+    .chat-bot-icon:hover { transform: scale(1.1); }
+    .chat-bot-icon img { width: 100%; filter: drop-shadow(0 0 8px #8b5cf6); }
+
+    .chat-popup {
+        position: fixed;
+        bottom: 90px;
+        right: 20px;
+        width: 300px;
+        height: 400px;
+        background: #1a1a1a;
+        border: 2px solid #8b5cf6;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        z-index: 2000;
+        overflow: hidden;
+        font-family: sans-serif;
+    }
+    .chat-popup.hidden { display: none; }
+
+    .chat-header { 
+        background: #8b5cf6; 
+        padding: 10px; 
+        display: flex; 
+        justify-content: space-between; 
+        font-weight: bold; 
+        color: white;
+    }
+    .chat-content { 
+        flex: 1; 
+        padding: 10px; 
+        overflow-y: auto; 
+        display: flex; 
+        flex-direction: column; 
+        gap: 10px; 
+        font-size: 14px; 
+        background: #111;
+    }
+    .bot-msg { 
+        background: #ffffff; 
+        color: #000;
+        padding: 8px; 
+        border-radius: 8px; 
+        align-self: flex-start; 
+        max-width: 85%; 
+    }
+    .user-msg { 
+        background: #8b5cf6; 
+        color: #fff;
+        padding: 8px; 
+        border-radius: 8px; 
+        align-self: flex-end; 
+        max-width: 85%; 
+    }
+
+    .chat-input-box { display: flex; padding: 10px; background: #111; border-top: 1px solid #333; }
+    #chat-input { flex: 1; background: #222; border: 1px solid #444; color: white; padding: 5px; border-radius: 4px; }
+    #send-chat { background: #8b5cf6; border: none; color: white; margin-left: 5px; cursor: pointer; border-radius: 4px; padding: 0 10px; }
+    #close-chat { background: none; border: none; color: white; cursor: pointer; font-size: 18px; }
+</style>
+
+<div id="chat-trigger" class="chat-bot-icon">
+    <img src="https://cdn-icons-png.flaticon.com/512/4712/4712035.png" alt="Bot">
+</div>
+
+<div id="chat-window" class="chat-popup hidden">
+    <div class="chat-header">
+        <span>🤖 Python Assistant</span>
+        <button id="close-chat">&times;</button>
+    </div>
+    <div id="chat-messages" class="chat-content">
+        <div class="bot-msg">Hi! I'm your Python helper. Ask me anything!</div>
+    </div>
+    <div class="chat-input-box">
+        <input type="text" id="chat-input" placeholder="Type a message...">
+        <button id="send-chat">Send</button>
+    </div>
+</div>
+
+<script>
+    (function() {
+        let chatHistory = []; 
+
+        function initChatbot() {
+            const chatTrigger = document.getElementById('chat-trigger');
+            const chatWindow = document.getElementById('chat-window');
+            const closeChat = document.getElementById('close-chat');
+            const sendBtn = document.getElementById('send-chat');
+            const chatInput = document.getElementById('chat-input');
+            const chatMessages = document.getElementById('chat-messages');
+
+            if (chatTrigger) chatTrigger.onclick = () => chatWindow.classList.toggle('hidden');
+            if (closeChat) closeChat.onclick = () => chatWindow.classList.add('hidden');
+
+            async function handleSend() {
+                const query = chatInput.value.trim();
+                if (!query) return;
+
+                appendMessage('user-msg', query);
+                chatInput.value = '';
+
+                const codeContent = (typeof editor !== 'undefined') ? editor.getValue() : "No code context";
+                const outputContent = document.getElementById('output') ? document.getElementById('output').innerText : "Ready!";
+
+                try {
+                    const response = await fetch('http://localhost:3000/chat-with-assistant', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ 
+                            query: query,
+                            code: codeContent, 
+                            output: outputContent,
+                            history: chatHistory 
+                        })
+                    });
+
+                    if (!response.ok) throw new Error(`Server Error: ${response.status}`);
+
+                    const data = await response.json();
+                    const botResponse = data.reply; 
+
+                    chatHistory.push({ role: "user", parts: [{ text: query }] });
+                    chatHistory.push({ role: "model", parts: [{ text: botResponse }] });
+
+                    appendMessage('bot-msg', botResponse);
+
+                } catch (err) {
+                    console.error("Chat Error:", err);
+                    appendMessage('bot-msg', "Connection lost. Is the server running?");
+                }
+            }
+
+            function appendMessage(type, text) {
+                const msg = document.createElement('div');
+                msg.className = type;
+                msg.innerText = text;
+                chatMessages.appendChild(msg);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            if (sendBtn) sendBtn.onclick = handleSend;
+            if (chatInput) {
+                chatInput.onkeydown = (e) => { if (e.key === 'Enter') handleSend(); };
+            }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initChatbot);
+        } else {
+            initChatbot();
+        }
+    })();
+</script>
+<!-- From HERE ABOVE Chatbot component -->
+
+
+<!-- From HERE BELOW Video button component -->
+<style>
+    .btn-video {
+        background: #8b5cf6;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: 0.3s;
+    }
+    .btn-video:hover {
+        background: #7c3aed;
+        box-shadow: 0 0 15px rgba(139, 92, 246, 0.4);
+    }
+
+    .video-modal {
+        display: none;
+        position: fixed;
+        z-index: 10000;
+        left: 0; top: 0; width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        backdrop-filter: blur(5px);
+        justify-content: center;
+        align-items: center;
+    }
+
+    .modal-content {
+        background: #1a1a1a;
+        padding: 10px;
+        border-radius: 12px;
+        border: 2px solid #8b5cf6;
+        width: 90%;
+        max-width: 800px;
+        position: relative;
+    }
+
+    .video-player { width: 100%; border-radius: 8px; }
+
+    .close-video {
+        position: absolute;
+        top: -45px;
+        right: 0;
+        color: white;
+        font-size: 30px;
+        background: none;
+        border: none;
+        cursor: pointer;
+    }
+</style>
+<div id="videoModal" class="video-modal">
+    <div class="modal-content">
+        <button class="close-video" id="closeVideoBtn">&times;</button>
+        <video id="tutorialVideo" class="video-player" controls>
+            <source src="../lvl1/lvl1.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+</div>
+<script>
+    (function() {
+        const modal = document.getElementById('videoModal');
+        const btn = document.getElementById('tutorialVideoBtn');
+        const close = document.getElementById('closeVideoBtn');
+        const video = document.getElementById('tutorialVideo');
+
+        if (btn) {
+            btn.onclick = () => {
+                modal.style.display = 'flex';
+                video.play();
+            };
+        }
+
+        const hideVideo = () => {
+            modal.style.display = 'none';
+            video.pause();
+            video.currentTime = 0;
+        };
+
+        if (close) close.onclick = hideVideo;
+        window.onclick = (event) => { if (event.target == modal) hideVideo(); };
+    })();
+</script>
+<!-- From HERE ABOVE Video button component -->
+
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Level 2: Variables</title>
+    
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="lvl2styles.css">
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Top Navigation -->
+        <div class="navbar">
+            <h1>📦 Level 2: Variable Storage</h1>
+            <div class="controls">
+                <button class="btn-video" id="tutorialVideoBtn">🎬 Watch Tutorial</button>
+                <button class="btn-run" id="runBtn">▶️ Run Code</button>
+                <button class="btn-back" id="backBtn" disabled>⬅️ Back</button>
+                <button class="btn-step" id="stepBtn" disabled>➡️ Next Step</button>
+                <button class="btn-reset" id="resetBtn">🔄 Reset</button>
+            </div>
+        </div>
+
+        <!-- 3-Column Grid -->
+        <div class="main-grid">
+            <!-- Column 1: Code Editor -->
+            <div class="panel">
+                <div class="panel-header">📝 Code Editor</div>
+                <div class="panel-content">
+                    <div class="editor-wrapper">
+                        <textarea id="editor"></textarea>
+                    </div>
+                    <div class="teacher-bubble" id="teacherBubble">
+                        <div class="teacher-icon">🤖</div>
+                        <div class="teacher-text" id="teacherText"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Column 2: Memory Bank -->
+            <div class="panel">
+                <div class="panel-header">🧠 Memory Bank</div>
+                <div class="panel-content">
+                    <div class="step-indicator" id="stepIndicator">Ready to run...</div>
+                    <div class="memory-bank" id="memoryBank"></div>
+                </div>
+            </div>
+
+            <!-- Column 3: Output -->
+            <div class="panel">
+                <div class="panel-header">🖥️ Output</div>
+                <div class="panel-content">
+                    <div class="output-display" id="output">>> Click 'Run Code' to start...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SVG Container for Trail Effects -->
+    <svg id="trailSvg" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999;"></svg>
+
+    <!-- Custom JavaScript -->
+    <script src="lvl2script.js"></script>
+
+    <!-- Video Modal Component -->
+    <div id="videoModal" class="video-modal">
+        <div class="modal-content">
+            <button class="close-video" id="closeVideoBtn">&times;</button>
+            <video id="tutorialVideo" class="video-player" controls>
+                <source src="../lvl1/lvl1.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+    </div>
+    
+    <script>
+        (function() {
+            const modal = document.getElementById('videoModal');
+            const btn = document.getElementById('tutorialVideoBtn');
+            const close = document.getElementById('closeVideoBtn');
+            const video = document.getElementById('tutorialVideo');
+
+            if (btn) {
+                btn.onclick = () => {
+                    modal.style.display = 'flex';
+                    video.play();
+                };
+            }
+
+            const hideVideo = () => {
+                modal.style.display = 'none';
+                video.pause();
+                video.currentTime = 0;
+            };
+
+            if (close) close.onclick = hideVideo;
+            window.onclick = (event) => { if (event.target == modal) hideVideo(); };
+        })();
+    </script>
+
+    <!-- Chatbot Component -->
+    <div id="chat-trigger" class="chat-bot-icon">
+        <img src="https://cdn-icons-png.flaticon.com/512/4712/4712035.png" alt="Bot">
+    </div>
+
+    <div id="chat-window" class="chat-popup hidden">
+        <div class="chat-header">
+            <span>🤖 Python Assistant</span>
+            <button id="close-chat">&times;</button>
+        </div>
+        <div id="chat-messages" class="chat-content">
+            <div class="bot-msg">Hi! I'm your Python helper. Ask me anything!</div>
+        </div>
+        <div class="chat-input-box">
+            <input type="text" id="chat-input" placeholder="Type a message...">
+            <button id="send-chat">Send</button>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            let chatHistory = []; 
+
+            function initChatbot() {
+                const chatTrigger = document.getElementById('chat-trigger');
+                const chatWindow = document.getElementById('chat-window');
+                const closeChat = document.getElementById('close-chat');
+                const sendBtn = document.getElementById('send-chat');
+                const chatInput = document.getElementById('chat-input');
+                const chatMessages = document.getElementById('chat-messages');
+
+                if (chatTrigger) chatTrigger.onclick = () => chatWindow.classList.toggle('hidden');
+                if (closeChat) closeChat.onclick = () => chatWindow.classList.add('hidden');
+
+                async function handleSend() {
+                    const query = chatInput.value.trim();
+                    if (!query) return;
+
+                    appendMessage('user-msg', query);
+                    chatInput.value = '';
+
+                    const codeContent = (typeof editor !== 'undefined') ? editor.getValue() : "No code context";
+                    const outputContent = document.getElementById('output') ? document.getElementById('output').innerText : "Ready!";
+
+                    try {
+                        const response = await fetch('http://localhost:3000/chat-with-assistant', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ 
+                                query: query,
+                                code: codeContent, 
+                                output: outputContent,
+                                history: chatHistory 
+                            })
+                        });
+
+                        if (!response.ok) throw new Error(`Server Error: ${response.status}`);
+
+                        const data = await response.json();
+                        const botResponse = data.reply; 
+
+                        chatHistory.push({ role: "user", parts: [{ text: query }] });
+                        chatHistory.push({ role: "model", parts: [{ text: botResponse }] });
+
+                        appendMessage('bot-msg', botResponse);
+
+                    } catch (err) {
+                        console.error("Chat Error:", err);
+                        appendMessage('bot-msg', "Connection lost. Is the server running?");
+                    }
+                }
+
+                function appendMessage(type, text) {
+                    const msg = document.createElement('div');
+                    msg.className = type;
+                    msg.innerText = text;
+                    chatMessages.appendChild(msg);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+
+                if (sendBtn) sendBtn.onclick = handleSend;
+                if (chatInput) {
+                    chatInput.onkeydown = (e) => { if (e.key === 'Enter') handleSend(); };
+                }
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initChatbot);
+            } else {
+                initChatbot();
+            }
+        })();
+    </script>
+</body>
+</html>

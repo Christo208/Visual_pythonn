@@ -1,0 +1,134 @@
+/* ===================================
+   Level 1: Hello World
+   Custom Styles
+   =================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    height: calc(100vh - 40px);
+}
+
+/* ============ NAVBAR ============ */
+.navbar {
+    background: white;
+    border-radius: 12px;
+    padding: 15px 25px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.navbar h1 {
+    font-size: 22px;
+    color: #667eea;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+}
+
+/* ============ BUTTONS ============ */
+button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.btn-run { background: #10b981; color: white; }
+.btn-step { background: #3b82f6; color: white; }
+.btn-reset { background: #ef4444; color: white; }
+button:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+/* ============ GRID ============ */
+.main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Only 2 columns for Lvl 1: Editor and Output */
+    gap: 20px;
+    flex: 1;
+}
+
+.panel {
+    background: white;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.panel-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px;
+    font-weight: 700;
+}
+
+.panel-content {
+    flex: 1;
+    padding: 20px;
+    position: relative;
+}
+
+/* ============ EDITOR & OUTPUT ============ */
+.CodeMirror { height: 200px; font-size: 18px; border-radius: 8px; }
+
+.cm-locked { background: rgba(239, 68, 68, 0.05); color: #764ba2; font-weight: bold; }
+
+.output-display {
+    height: 100%;
+    background: #1e293b;
+    color: #10b981;
+    font-family: 'Courier New', monospace;
+    font-size: 20px;
+    padding: 20px;
+    border-radius: 8px;
+    white-space: pre-wrap;
+}
+
+/* ============ ANIMATIONS ============ */
+.animation-spark {
+    position: fixed;
+    pointer-events: none;
+    background: #4ade80;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: bold;
+    z-index: 10000;
+    box-shadow: 0 0 20px rgba(74, 222, 128, 0.9);
+}
+
+.teacher-bubble {
+    margin-top: 15px;
+    background: #f0fdf4;
+    border: 2px solid #bbf7d0;
+    border-radius: 12px;
+    padding: 15px;
+    display: none;
+}
+
+.teacher-bubble.show { display: flex; animation: slideUp 0.4s ease; }
+
+@keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
