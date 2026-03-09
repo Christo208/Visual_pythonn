@@ -1,8 +1,6 @@
 /* ===================================
    Level 3: Rectangle Area Calculator
-   PART 1: Core Logic + Main Animations
-   
-   COPY THIS + PART 2 INTO ONE lvl3script.js FILE
+   IMPROVED VERSION - Atomic Back Button
    =================================== */
 
 // ============ GLOBAL VARIABLES ============
@@ -12,6 +10,7 @@ let currentStep = 0;
 let totalSteps = 0;
 let isRunning = false;
 let animationHistory = [];
+let stepAnimations = []; // FIX #1: Added step tracking
 let executionPlan = [];
 let currentVariables = {};
 

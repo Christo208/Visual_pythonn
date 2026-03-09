@@ -1,0 +1,84 @@
+/* ===================================
+   CSS Fixes for Pop Animation
+   Adds styles for proper alignment and animation
+   =================================== */
+
+/* Pop Animation Elements */
+.pop-arrow-head {
+    pointer-events: none;
+    user-select: none;
+    transition: background-color 0.5s ease;
+}
+
+.pop-return-pill {
+    pointer-events: none;
+    user-select: none;
+    white-space: nowrap;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* List Table Alignment Fix */
+.list-row {
+    vertical-align: middle;
+    transition: all 0.3s ease;
+}
+
+.list-index-cell,
+.list-content-cell {
+    vertical-align: middle;
+    padding: 8px 12px;
+    line-height: 1.5;
+}
+
+/* Ensure no residual transforms */
+.list-row:not(.animating) {
+    transform: none !important;
+}
+
+/* Error shake animation */
+@keyframes table-shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+    20%, 40%, 60%, 80% { transform: translateX(10px); }
+}
+
+.list-container.error-shake {
+    animation: table-shake 0.5s ease-in-out;
+}
+
+/* ===================================
+   Remove Animation Styles (Indigo Theme)
+   =================================== */
+
+/* Remove Search Indicator */
+.remove-search-div {
+    position: fixed;
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+    border: 3px solid #4338ca;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(30, 27, 75, 0.6);
+    font-family: 'Courier New', monospace;
+    pointer-events: none;
+    z-index: 10000;
+}
+
+.remove-label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.remove-status {
+    font-size: 12px;
+    color: #c7d2fe;
+    font-style: italic;
+}
+
+/* Remove Arrow (Indigo) */
+.remove-arrow line {
+    stroke: #1e1b4b !important;
+}
+
+.remove-arrow marker polygon {
+    fill: #1e1b4b !important;
+}

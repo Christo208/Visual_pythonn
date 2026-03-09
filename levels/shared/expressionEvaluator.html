@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔬 Expression Evaluator</title>
+    <link rel="stylesheet" href="expressionEvaluator.css">
+    
+    <!-- GSAP for animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+</head>
+<body>
+    <div class="evaluator-container">
+        
+        <!-- SPACE 1: Memory Bank (Top Bar) -->
+        <div class="space space-1">
+            <h3>🧠 Memory Bank</h3>
+            <div id="memoryBank" class="memory-content">
+                <span class="placeholder">No variables yet...</span>
+            </div>
+        </div>
+
+        <!-- SPACE 2: Operator Precedence (Left Sidebar) -->
+        <div class="space space-2">
+            <h3>⚙️ Operators</h3>
+            <div class="operator-list">
+                <div class="op-group">
+                    <span class="op-label">Parentheses:</span>
+                    <span class="op-symbols">( )</span>
+                </div>
+                <div class="op-group">
+                    <span class="op-label">Power:</span>
+                    <span class="op-symbols">**</span>
+                </div>
+                <div class="op-group">
+                    <span class="op-label">Multiply/Divide:</span>
+                    <span class="op-symbols">* / // %</span>
+                </div>
+                <div class="op-group">
+                    <span class="op-label">Add/Subtract:</span>
+                    <span class="op-symbols">+ -</span>
+                </div>
+                <div class="op-group">
+                    <span class="op-label">Comparison:</span>
+                    <span class="op-symbols">== != > < >= <=</span>
+                </div>
+                <div class="op-group">
+                    <span class="op-label">NOT:</span>
+                    <span class="op-symbols">not</span>
+                </div>
+                <div class="op-group">
+                    <span class="op-label">AND:</span>
+                    <span class="op-symbols">and</span>
+                </div>
+                <div class="op-group">
+                    <span class="op-label">OR:</span>
+                    <span class="op-symbols">or</span>
+                </div>
+            </div>
+            <div id="shortCircuitStatus" class="short-circuit-status">
+                <span class="status-label">⚡ Short-circuit:</span>
+                <span class="status-value">Inactive</span>
+            </div>
+        </div>
+
+        <!-- SPACE 3: Animation Canvas (Main Center Area) -->
+        <div class="space space-3">
+            <div id="animationCanvas" class="animation-canvas">
+                <div id="expressionDisplay" class="expression-display">
+                    <span class="waiting-text">Waiting for expression...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- SPACE 4: Step-by-Step Explanation (Bottom Bar) -->
+        <div class="space space-4">
+            <h3>📝 Evaluation Steps</h3>
+            <div id="stepExplanation" class="step-content">
+                <p class="step-text">Ready to evaluate expressions...</p>
+            </div>
+        </div>
+
+        <!-- Close Button -->
+        <button id="closeBtn" class="close-btn">✖ Close</button>
+    </div>
+
+    <!-- Preload sounds for Phase 1 -->
+    <audio id="soundThunder" preload="auto">
+        <source src="../sounds/thunder.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="soundWhoosh" preload="auto">
+        <source src="../sounds/whoosh.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="soundSlap" preload="auto">
+        <source src="../sounds/slap.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- Main JavaScript -->
+    <script src="expressionEvaluator.js"></script>
+
+    <!-- SVG Trail Container -->
+    <svg id="trailSvg"></svg>
+
+    <!-- Preload sounds... (rest of your code) -->
+</body>
+</html>

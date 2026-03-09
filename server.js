@@ -1,12 +1,13 @@
-require('dotenv').config(); 
+require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
-const cors = require('cors'); 
+const cors = require('cors');
+const path = require('path'); // Added for file pathing
 
 const app = express();
 const PORT = 3000;
 
-//GROK SETUP
+// GROK SETUP
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -18,25 +19,32 @@ if (!GEMINI_API_KEY) {
     process.exit(1);
 }
 
-// Use gemini-2.5-flash-lite (higher free tier limit) const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
-app.use(cors()); 
-app.use(express.json());
+// SMART EXPLANATION CACHE
+const explanationCache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-// --- TEST ENDPOINT TO LIST MODELS ---
-/*
-app.get('/test-models', async (req, res) => {
-    try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
-        const data = await response.json();
-        console.log('Available models:', JSON.stringify(data, null, 2));
-        res.json(data);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+// Clear old entries every 10 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of explanationCache.entries()) {
+        if (now - value.timestamp > CACHE_DURATION) {
+            explanationCache.delete(key);
+        }
     }
-});*/
+}, 10 * 60 * 1000);
+
+app.use(cors());
+app.use(express.json());
+app.use(express.static(__dirname)); // Added to serve your HTML/CSS/JS files
+
+// --- ROOT ROUTE ---
+// Added to serve index.html when visiting http://localhost:3000/
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // --- MAIN PAGE ENDPOINT ---
 app.post('/generate-explanation', async (req, res) => {
@@ -47,7 +55,7 @@ app.post('/generate-explanation', async (req, res) => {
             return res.status(400).json({ error: 'Missing code in request body.' });
         }
 
-        const inputList = inputHistory ? inputHistory.map((input, index) => 
+        const inputList = inputHistory ? inputHistory.map((input, index) =>
             `Input #${index + 1}: ${input}`
         ).join('\n') : "No input provided.";
 
@@ -78,7 +86,6 @@ ${code}
 Return ONLY the explanations as a JSON array of strings.`;
 
         console.log('📡 Calling Gemini API for main page...');
-        console.log('📍 URL:', GEMINI_API_URL.split('?')[0]);
         
         const response = await fetch(GEMINI_API_URL, {
             method: 'POST',
@@ -96,8 +103,8 @@ Return ONLY the explanations as a JSON array of strings.`;
             console.error('❌ Gemini API Error:', response.status);
             console.error('Response:', responseText);
             return res.status(response.status).json({ 
-                error: 'Gemini API Error', 
-                details: responseText 
+                error: 'Gemini API Error',
+                details: responseText
             });
         }
 
@@ -107,17 +114,24 @@ Return ONLY the explanations as a JSON array of strings.`;
 
     } catch (error) {
         console.error('❌ Server Error:', error.message);
-        res.status(500).json({ 
-            error: 'Internal Server Error', 
-            details: error.message 
+        res.status(500).json({
+            error: 'Internal Server Error',
+            details: error.message
         });
     }
 });
 
-// --- TUTORIAL PAGE ENDPOINT ---
+// --- OLD TUTORIAL ENDPOINT (KEPT FOR COMPATIBILITY) ---
 app.post('/generate-tutorial-explanation', async (req, res) => {
     try {
         const { code, output } = req.body;
+        const cacheKey = `${code}|${output}`;
+        
+        const cached = explanationCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+            console.log('✅ Cache hit! (saving API call)');
+            return res.json(cached.data);
+        }
         
         const prompt = `Explain this Python code to a 10-year-old in two very short sentences.
         The code is: ${code}. The output was: ${output}.
@@ -140,25 +154,194 @@ app.post('/generate-tutorial-explanation', async (req, res) => {
         if (!response.ok) {
             console.error('❌ Gemini API Error:', response.status);
             console.error('Response:', responseText);
-            return res.status(response.status).json({ 
-                error: 'Gemini API Error', 
-                details: responseText 
+            return res.status(response.status).json({
+                error: 'Gemini API Error',
+                details: responseText
             });
         }
 
         const data = JSON.parse(responseText);
-        console.log('✅ Gemini API response received');
+        
+        explanationCache.set(cacheKey, {
+            data: data,
+            timestamp: Date.now()
+        });
+        
+        console.log('✅ Gemini API response received (and cached)');
         res.json(data);
 
     } catch (error) {
         console.error('❌ Server Error:', error.message);
-        res.status(500).json({ 
-            error: 'Server Error', 
-            details: error.message 
+        res.status(500).json({
+            error: 'Server Error',
+            details: error.message
         });
     }
 });
 
+// --- NEW SMART ENDPOINT WITH PLACEHOLDERS ---
+app.post('/generate-smart-tutorial-explanation', async (req, res) => {
+    try {
+        const { fullCode, mode } = req.body;
+        
+        if (!fullCode) {
+            return res.status(400).json({ error: 'Missing fullCode in request body.' });
+        }
+
+        // Check cache first
+        const cacheKey = `${fullCode}|${mode}`;
+        const cached = explanationCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+            console.log('✅ Smart cache hit! (saving API call)');
+            return res.json(cached.data);
+        }
+
+        // Build smart prompt
+        const lines = fullCode.split('\n').filter(l => l.trim());
+        const prompt = `You are generating step-by-step explanations for a Python learning platform for 10-year-olds.
+
+Code to analyze:
+\`\`\`python
+${fullCode}
+\`\`\`
+
+Mode: ${mode === 'solution' ? 'SOLUTION (using int() for number conversion)' : 'PROBLEM (string concatenation)'}
+
+Generate a JSON array with ONE explanation per line of code.
+
+CRITICAL RULES:
+1. Use {{PLACEHOLDERS}} for unknown runtime values:
+   - {{USER_INPUT_0}}, {{USER_INPUT_1}}, {{USER_INPUT_2}} for input() calls (in order they appear)
+   - {{VAR_NAME}} for variable values (e.g., {{a}}, {{b}}, {{c}})
+   - {{RESULT}} for calculation results
+
+2. Reference previous steps naturally:
+   - "Remember you typed {{USER_INPUT_0}}..."
+   - "Earlier we stored {{a}} in box a..."
+   - "Now we're adding {{a}} and {{b}}..."
+
+3. Explain mode-specific features:
+   - Solution mode: "The int() machine converts {{USER_INPUT_0}} from text to a real number!"
+   - Problem mode: "Python glues {{a}} and {{b}} together like puzzle pieces!"
+
+4. Use platform analogies:
+   - Variables = boxes that store things
+   - int() = conversion machine (text → number)
+   - print() = displaying on screen
+
+5. Keep each explanation 2-3 sentences maximum, encouraging tone
+
+6. **CRITICAL FOR ASSIGNMENT LINES (a=3, b=4, c=5):**
+   - Explain the CURRENT action: "You created a box called 'c' and put the number 5 inside!"
+   - DO NOT say "You have learned..." or give summary statements
+   - Focus on what THIS line does, not what they've accomplished overall
+   - **THIS APPLIES TO EVERY LINE, INCLUDING THE LAST LINE**
+   - Even if it's the final line, explain what THAT line does, not a summary
+
+Output format (STRICT JSON):
+{
+    "explanations": [
+        {
+            "step": 0,
+            "line": "exact line of code",
+            "explanation": "explanation with {{PLACEHOLDERS}}",
+            "placeholders": ["USER_INPUT_0", "VAR_NAME"],
+            "type": "input|assignment|print"
+        }
+    ]
+}
+
+CRITICAL: Return ONLY valid JSON, no markdown code blocks, no preamble text.`;
+
+        console.log('📡 Calling Gemini API for SMART tutorial explanations...');
+        console.log(`📊 Generating ${lines.length} contextual explanations in 1 API call`);
+
+        const response = await fetch(GEMINI_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [{ text: prompt }]
+                }]
+            })
+        });
+
+        const responseText = await response.text();
+
+        if (!response.ok) {
+            console.error('❌ Gemini API Error:', response.status);
+            console.error('Response:', responseText);
+            return res.status(response.status).json({
+                error: 'Gemini API Error',
+                details: responseText
+            });
+        }
+
+        const data = JSON.parse(responseText);
+        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+        
+        // Parse JSON response
+        let explanations;
+        try {
+            // Remove markdown code blocks if present
+            const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
+            const parsed = JSON.parse(cleanText);
+            explanations = parsed.explanations || [];
+            
+            // Ensure we have enough explanations
+            while (explanations.length < lines.length) {
+                const idx = explanations.length;
+                explanations.push({
+                    step: idx,
+                    line: lines[idx],
+                    explanation: `Line ${idx + 1}: ${lines[idx]} executed successfully!`,
+                    placeholders: [],
+                    type: 'assignment'
+                });
+            }
+            
+            // Trim if we got too many
+            explanations = explanations.slice(0, lines.length);
+            
+        } catch (parseError) {
+            console.error('❌ Failed to parse JSON response:', parseError);
+            console.error('Raw response:', rawText);
+            
+            // Fallback: generate simple explanations
+            explanations = lines.map((line, idx) => ({
+                step: idx,
+                line: line,
+                explanation: line.includes('input()')
+                    ? `You'll type a value here, and Python stores it in a variable!`
+                    : line.includes('print(')
+                    ? `Python displays the result on the screen!`
+                    : `Python creates a box and stores a value inside!`,
+                placeholders: [],
+                type: line.includes('input()') ? 'input' : line.includes('print(') ? 'print' : 'assignment'
+            }));
+        }
+
+        const result = { explanations };
+        
+        // Store in cache
+        explanationCache.set(cacheKey, {
+            data: result,
+            timestamp: Date.now()
+        });
+
+        console.log(`✅ Smart explanations generated and cached: ${explanations.length} steps`);
+        res.json(result);
+
+    } catch (error) {
+        console.error('❌ Server Error:', error.message);
+        res.status(500).json({
+            error: 'Server Error',
+            details: error.message
+        });
+    }
+});
+
+// --- CHATBOT ENDPOINT --
 app.post('/chat-with-assistant', async (req, res) => {
     try {
         const { query, code, output, history } = req.body;
@@ -212,5 +395,4 @@ app.listen(PORT, () => {
     console.log(`✅ Server running on http://localhost:${PORT}`);
     console.log(`🔑 API Key loaded: ${GEMINI_API_KEY.substring(0, 10)}...`);
     console.log(`📡 Using model: ${GEMINI_MODEL}`);
-    console.log(`🧪 Test models at: http://localhost:3000/test-models`);
 });

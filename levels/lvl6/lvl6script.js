@@ -1,0 +1,2211 @@
+/* ===================================
+   Level 6: If Statements - NEW APPROACH
+   Part 1: Globals, Init, Basic Setup
+   =================================== */
+
+// ============ GLOBAL VARIABLES ============
+let editor, pyodide = null, currentStep = 0, totalSteps = 0;
+let isRunning = false, animationHistory = [], executionPlan = [];
+let stepAnimations = [];
+let currentVariables = {}, currentLineMarker = null, currentMode = 'problem';
+
+// NEW: Smart AI variables
+let preloadedExplanations = [];
+let placeholderValues = {};
+let inputCounter = 0;
+
+// ============ SOUND EFFECTS ============
+const sounds = {
+    keystroke: new Audio('../sounds/keystroke.wav'),
+    enter: new Audio('../sounds/enter.wav'),
+    notification: new Audio('../sounds/notification.wav'),
+    whoosh: new Audio('../sounds/whoosh.wav'),
+    machineGear: new Audio('../sounds/gear.mp3'),
+    inputFail: new Audio('../sounds/inputfail.wav')
+};
+
+sounds.keystroke.volume = 0.2;
+sounds.enter.volume = 0.4;
+sounds.notification.volume = 0.3;
+sounds.whoosh.volume = 0.5;
+sounds.inputFail.volume = 0.5;
+sounds.machineGear.volume = 1.0;
+sounds.machineGear.playbackRate = 1.33;
+
+// ============ INITIALIZATION ============
+window.onload = async () => {
+    editor = CodeMirror.fromTextArea(document.getElementById('editor'), {
+        mode: "python", theme: "monokai", lineNumbers: true, readOnly: false
+    });
+    editor.setValue('age = int(input())\nif age >= 18:\n    print("Adult")\nelse:\n    print("Minor")');
+    setupModeSelector();
+    setupLineRestrictions();
+    await loadPyodideEnv();
+};
+
+// ============ PYODIDE LOADER ============
+async function loadPyodideEnv() {
+    if (pyodide) return;
+    const output = document.getElementById('output');
+    output.textContent = '⏳ Loading Python...';
+    try {
+        pyodide = await loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/"});
+        await pyodide.runPythonAsync(`import sys, io\noutput_buffer = io.StringIO()\nsys.stdout = output_buffer`);
+        output.textContent = '✅ Python ready! Click "Run Code" to start.';
+    } catch (error) {
+        output.innerHTML = `<span class="error">❌ Failed: ${error.message}</span>`;
+    }
+}
+
+// ============ MODE SELECTOR ============
+function setupModeSelector() {
+    document.querySelectorAll('input[name="mode"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            currentMode = e.target.value;
+            updateEditorForMode();
+            resetExecution();
+        });
+    });
+}
+
+function resetExecution() {
+    currentStep = 0;
+    animationHistory = [];
+    stepAnimations = [];
+    currentVariables = {};
+    preloadedExplanations = [];
+    placeholderValues = {};
+    inputCounter = 0;
+    
+    document.getElementById('memoryBank').innerHTML = '';
+    document.getElementById('output').textContent = '>> Click "Run Code" to start...';
+    isRunning = false;
+    editor.setOption("readOnly", false);
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('stepBtn').disabled = true;
+    document.getElementById('backBtn').disabled = true;
+    updateStepIndicator();
+    if (currentLineMarker) {
+        currentLineMarker.clear();
+        currentLineMarker = null;
+    }
+}
+
+// ============ EDITOR RESTRICTIONS ============
+function setupLineRestrictions() {
+    editor.on('beforeChange', (cm, change) => {
+        if (change.origin === 'paste' || change.origin === 'drop') {
+            if (change.text.join('').includes('\n')) change.cancel();
+        }
+        if (change.origin === '+input' && change.text.length > 1) change.cancel();
+        if (change.origin === '+delete' || change.origin === 'cut') {
+            if (change.from.line !== change.to.line) change.cancel();
+        }
+    });
+    lockPrintStatements();
+    lockInputStatements();
+}
+
+function lockPrintStatements() {
+    for (let i = 0; i < editor.lineCount(); i++) {
+        const line = editor.getLine(i);
+        const match = line.match(/print\s*\(/);
+        if (match) {
+            const start = match.index;
+            editor.markText({line: i, ch: start}, {line: i, ch: start + 6}, 
+                {readOnly: true, atomic: true, className: 'cm-locked-print'});
+            const close = line.lastIndexOf(')');
+            if (close > -1) {
+                editor.markText({line: i, ch: close}, {line: i, ch: close + 1}, 
+                    {readOnly: true, atomic: true, className: 'cm-locked-print'});
+            }
+        }
+    }
+}
+
+function lockInputStatements() {
+    for (let i = 0; i < editor.lineCount(); i++) {
+        const line = editor.getLine(i);
+        const match = line.match(/input\s*\(/);
+        if (match) {
+            const start = match.index;
+            editor.markText({line: i, ch: start}, {line: i, ch: start + 6}, 
+                {readOnly: true, atomic: true, className: 'cm-locked-print'});
+            const close = line.lastIndexOf(')');
+            if (close > -1) {
+                editor.markText({line: i, ch: close}, {line: i, ch: close + 1}, 
+                    {readOnly: true, atomic: true, className: 'cm-locked-print'});
+            }
+        }
+    }
+}
+
+// ============ DETECT IF-STRUCTURE ============
+function detectIfStructure(code) {
+    const lines = code.split('\n');
+    const ifStructure = {
+        hasIf: false,
+        startLine: -1,
+        endLine: -1,
+        conditions: []
+    };
+    
+    let baseIndent = -1;
+    let currentConditionIndex = -1;
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        const indent = line.search(/\S|$/);
+        
+        if (trimmed.startsWith('if ') && baseIndent === -1) {
+            ifStructure.hasIf = true;
+            ifStructure.startLine = i;
+            baseIndent = indent;
+            
+            const condition = trimmed.substring(3, trimmed.lastIndexOf(':')).trim();
+            ifStructure.conditions.push({
+                type: 'if',
+                condition: condition,
+                lineNum: i,
+                block: []
+            });
+            currentConditionIndex = 0;
+            
+        } else if (trimmed.startsWith('elif ') && indent === baseIndent) {
+            const condition = trimmed.substring(5, trimmed.lastIndexOf(':')).trim();
+            ifStructure.conditions.push({
+                type: 'elif',
+                condition: condition,
+                lineNum: i,
+                block: []
+            });
+            currentConditionIndex++;
+            
+        } else if (trimmed.startsWith('else:') && indent === baseIndent) {
+            ifStructure.conditions.push({
+                type: 'else',
+                condition: 'True',
+                lineNum: i,
+                block: []
+            });
+            currentConditionIndex++;
+            
+        } else if (ifStructure.hasIf && indent > baseIndent && trimmed.length > 0 && currentConditionIndex >= 0) {
+            ifStructure.conditions[currentConditionIndex].block.push({
+                code: lines[i],
+                lineNum: i
+            });
+            
+        } else if (ifStructure.hasIf && indent <= baseIndent && trimmed.length > 0 && !trimmed.startsWith('elif') && !trimmed.startsWith('else')) {
+            ifStructure.endLine = i - 1;
+            break;
+        }
+    }
+    
+    if (ifStructure.hasIf && ifStructure.endLine === -1) {
+        ifStructure.endLine = lines.length - 1;
+    }
+    
+    return ifStructure;
+}
+
+// ============ RUN BUTTON ============
+document.getElementById('runBtn').onclick = async () => {
+    if (isRunning || !pyodide && !(await loadPyodideEnv())) return;
+    
+    isRunning = true;
+    currentStep = 0;
+    animationHistory = [];
+    executionPlan = [];
+    stepAnimations = [];
+    currentVariables = {};
+    placeholderValues = {};
+    inputCounter = 0;
+    preloadedExplanations = [];
+    
+    editor.setOption("readOnly", true);
+    document.getElementById('runBtn').disabled = true;
+    document.getElementById('stepBtn').disabled = false;
+    document.getElementById('output').textContent = '';
+    document.getElementById('memoryBank').innerHTML = '';
+    
+    const lines = editor.getValue().split('\n').filter(l => l.trim());
+    const fullCode = editor.getValue();
+    
+    try {
+        const ifStructure = detectIfStructure(fullCode);
+
+        executionPlan = lines.map((line, idx) => {
+            const trimmed = line.trim();
+            
+            if (ifStructure.hasIf && idx >= ifStructure.startLine && idx <= ifStructure.endLine) {
+                if (idx === ifStructure.startLine) {
+                    return { lineNumber: idx, code: line, type: 'if-block', ifStructure: ifStructure };
+                } else {
+                    return null;
+                }
+            }
+            
+            return {
+                lineNumber: idx,
+                code: line,
+                type: trimmed.includes('input(') ? 'input' : 
+                      trimmed.includes('print(') ? 'print' : 'assignment'
+            };
+        }).filter(step => step !== null);
+        
+        totalSteps = executionPlan.length;
+        updateStepIndicator();
+        
+        // Smart API call
+        if (preloadedExplanations.length === 0) {
+            console.log('📡 Fetching smart explanations...');
+            try {
+                const response = await fetch('http://localhost:3000/generate-smart-tutorial-explanation', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        fullCode: fullCode,
+                        mode: currentMode
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    preloadedExplanations = data.explanations || [];
+                    console.log(`✅ Loaded ${preloadedExplanations.length} smart explanations`);
+                } else {
+                    console.warn('⚠️ Smart API failed, using fallback explanations');
+                    preloadedExplanations = generateFallbackExplanations(lines);
+                }
+            } catch (error) {
+                console.warn('⚠️ Smart API error, using fallback explanations:', error);
+                preloadedExplanations = generateFallbackExplanations(lines);
+            }
+        }
+        
+        showTeacher("✅ Code validated! Click 'Next Step' to see Python in action.");
+        
+    } catch (error) {
+        await generateErrorExplanation(error, editor.getValue());
+        isRunning = false;
+        editor.setOption("readOnly", false);
+        document.getElementById('runBtn').disabled = false;
+    }
+};
+
+function generateFallbackExplanations(lines) {
+    return lines.map((line, idx) => ({
+        step: idx,
+        line: line,
+        explanation: line.includes('input()') 
+            ? `You'll type a value here, and Python stores it in a variable!`
+            : line.includes('print(')
+            ? `Python displays the result on the screen!`
+            : `Python executes this line successfully!`,
+        placeholders: [],
+        type: line.includes('input()') ? 'input' : line.includes('print(') ? 'print' : 'assignment'
+    }));
+}
+
+// Continue in Part 2...
+
+/* ===================================
+   Level 6: If Statements - NEW APPROACH
+   Part 2: Step Button with Blacking
+   =================================== */
+
+// ============ STEP BUTTON (UPDATED) ============
+document.getElementById('stepBtn').onclick = async () => {
+    if (currentStep >= totalSteps) return;
+    
+    const stepBtn = document.getElementById('stepBtn');
+    stepBtn.disabled = true;
+    
+    const step = executionPlan[currentStep];
+    stepAnimations[currentStep] = [];
+    
+    try {
+        if (step.type === 'input') {
+            highlightLine(step.lineNumber);
+            await handleInputStatement(step);
+            
+        } else if (step.type === 'if-block') {
+            // DISABLE ALL CONTROL BUTTONS
+            document.getElementById('runBtn').disabled = true;
+            document.getElementById('backBtn').disabled = true;
+            document.getElementById('stepBtn').disabled = true;
+            
+            
+            
+            // Start blacking animation
+            await doBlackingAnimation();
+            
+            // Draw YOUR beautiful 4-column tree
+            await buildIfTree(step.ifStructure);
+            
+            // Wait 2 seconds
+            await delay(2000);
+            
+            // Create thought box NEAR BRAIN
+            await createBrainThoughtBox();
+            
+            // Show initial message
+            await updateBrainThought(getInitialThoughtMessage(step.ifStructure));
+            
+            // Wait for user
+            await waitForContinueThinking();
+            
+            // Evaluate conditions step by step
+            const chosenBranch = await evaluateConditionsWithThought(step.ifStructure);
+            
+            // Remove thought box
+            removeBrainThoughtBox();
+            
+            // Remove tree
+            await removeIfTree();
+            
+            // Reverse blacking
+            await reverseBlackingAnimation();
+            
+            // RE-ENABLE BUTTONS
+            document.getElementById('runBtn').disabled = false;
+            document.getElementById('backBtn').disabled = false;
+            document.getElementById('stepBtn').disabled = false;
+            
+            
+            
+            // Execute chosen block
+            if (chosenBranch >= 0) {
+                const chosenBlock = step.ifStructure.conditions[chosenBranch].block;
+                
+                for (const blockItem of chosenBlock) {
+                    if (blockItem.code.trim().startsWith('print(')) {
+                        highlightLine(blockItem.lineNum);
+                        
+                        const output = await pyodide.runPythonAsync('output_buffer.getvalue()');
+                        const newOutput = output.split('\n').filter(l => l.trim()).pop() || '';
+                        await pyodide.runPythonAsync('output_buffer.truncate(0); output_buffer.seek(0)');
+                        
+                        await animatePrintSpark(blockItem.lineNum, newOutput);
+                        placeholderValues['RESULT'] = newOutput;
+                    }
+                }
+            }
+            
+            await showSmartExplanation(currentStep);
+            currentStep++;
+            updateStepIndicator();
+            updateButtons();
+            
+            if (currentStep < totalSteps) {
+                stepBtn.disabled = false;
+            }
+            
+        } else {
+            highlightLine(step.lineNumber);
+            await pyodide.runPythonAsync(step.code);
+            
+            const varsJs = pyodide.globals.toJs();
+            currentVariables = {};
+            for (let [key, value] of varsJs) {
+                if (!key.startsWith('_') && !['output_buffer', 'sys', 'io'].includes(key)) {
+                    currentVariables[key] = String(value);
+                }
+            }
+            
+            if (step.type === 'print') {
+                const output = await pyodide.runPythonAsync('output_buffer.getvalue()');
+                const newOutput = output.split('\n').filter(l => l.trim()).pop() || '';
+                await animatePrint(step, newOutput);
+                placeholderValues['RESULT'] = newOutput;
+            }
+            
+            await showSmartExplanation(currentStep);
+            currentStep++;
+            updateStepIndicator();
+            updateButtons();
+            
+            if (currentStep < totalSteps) {
+                stepBtn.disabled = false;
+            }
+        }
+        
+    } catch (error) {
+        await generateErrorExplanation(error, step.code, step.lineNumber);
+        stepBtn.disabled = true;
+    }
+};
+
+
+
+// ============ BLACKING ANIMATION ============
+async function doBlackingAnimation() {
+    console.log('🎬 Starting blacking animation...');
+    
+    // Get all 3 panels
+    const codePanel = document.querySelector('.panel:nth-child(1)');
+    const memoryPanel = document.querySelector('.panel:nth-child(2)');
+    const outputPanel = document.querySelector('.panel:nth-child(3)');
+    const body = document.body;
+    
+    // Step 1: Fade out all 3 panels
+    await Promise.all([
+        gsap.to(codePanel, { opacity: 0, duration: 0.8 }),
+        gsap.to(memoryPanel, { opacity: 0, duration: 0.8 }),
+        gsap.to(outputPanel, { opacity: 0, duration: 0.8 })
+    ]);
+    
+    // Step 2: Transition body background from gradient to violet
+    await gsap.to(body, { 
+        background: '#8b5cf6',
+        duration: 0.5 
+    });
+    
+    // Step 3: Transition violet to black
+    await gsap.to(body, { 
+        background: '#000000', 
+        duration: 0.8 
+    });
+    
+    console.log('✅ Blacking animation complete!');
+}
+
+
+// ============ REVERSE BLACKING ANIMATION ============
+async function reverseBlackingAnimation() {
+    console.log('🎬 Reversing blacking animation...');
+    
+    const codePanel = document.querySelector('.panel:nth-child(1)');
+    const memoryPanel = document.querySelector('.panel:nth-child(2)');
+    const outputPanel = document.querySelector('.panel:nth-child(3)');
+    const body = document.body;
+    
+    // Step 1: Transition black to violet
+    await gsap.to(body, { 
+        background: '#8b5cf6', 
+        duration: 0.8 
+    });
+    
+    // Step 2: Transition violet back to original gradient
+    await gsap.to(body, { 
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+        duration: 0.5 
+    });
+    
+    // Step 3: Fade in all 3 panels
+    await Promise.all([
+        gsap.to(codePanel, { opacity: 1, duration: 0.8 }),
+        gsap.to(memoryPanel, { opacity: 1, duration: 0.8 }),
+        gsap.to(outputPanel, { opacity: 1, duration: 0.8 })
+    ]);
+    
+    console.log('✅ Reverse blacking complete!');
+}
+
+// ============ EXECUTE IF-STRUCTURE ============
+async function executeIfStructure(ifStructure) {
+    console.log('🔍 Executing if-structure to find chosen branch...');
+    
+    // Evaluate each condition until one is true
+    for (let i = 0; i < ifStructure.conditions.length; i++) {
+        const condition = ifStructure.conditions[i];
+        
+        if (condition.type === 'else') {
+            // else is always true if reached
+            console.log(`✅ Reached else block (branch ${i})`);
+            
+            // Execute the else block
+            for (const blockItem of condition.block) {
+                await pyodide.runPythonAsync(blockItem.code);
+            }
+            
+            return i;
+        }
+        
+        // Evaluate the condition
+        const result = await evaluateConditionExpression(condition.condition);
+        console.log(`Condition "${condition.condition}" = ${result}`);
+        
+        if (result === true) {
+            console.log(`✅ Found TRUE condition at branch ${i}`);
+            
+            // Execute the chosen block
+            for (const blockItem of condition.block) {
+                await pyodide.runPythonAsync(blockItem.code);
+            }
+            
+            return i;
+        }
+    }
+    
+    // No condition was true
+    console.log('⚠️ No condition was true');
+    return -1;
+}
+
+async function evaluateConditionExpression(expr) {
+    try {
+        let pythonExpr = expr;
+        Object.keys(currentVariables).forEach(varName => {
+            const regex = new RegExp(`\\b${varName}\\b`, 'g');
+            pythonExpr = pythonExpr.replace(regex, currentVariables[varName]);
+        });
+        
+        const result = await pyodide.runPythonAsync(`bool(${pythonExpr})`);
+        return result;
+    } catch (error) {
+        console.error('Evaluation error:', error);
+        return false;
+    }
+}
+
+// ============ BLACKING DONE POPUP ============
+async function showBlackingDonePopup(chosenBranchIndex, ifStructure) {
+    return new Promise((resolve) => {
+
+        // Store chosen branch for later use (SECOND click)
+        window.chosenBranchIndex = chosenBranchIndex;
+
+        // Build the if-structure code display
+        let codeDisplay = '';
+        ifStructure.conditions.forEach((cond) => {
+            if (cond.type === 'if') {
+                codeDisplay += `if ${cond.condition}:\n`;
+            } else if (cond.type === 'elif') {
+                codeDisplay += `elif ${cond.condition}:\n`;
+            } else {
+                codeDisplay += `else:\n`;
+            }
+            cond.block.forEach(blockItem => {
+                codeDisplay += `    ${blockItem.code.trim()}\n`;
+            });
+        });
+
+        // Create popup
+        const popup = document.createElement('div');
+        popup.id = 'blackingPopup';
+        popup.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 20%;
+            transform: translateY(-50%);
+            padding: 30px;
+            background: #1e293b;
+            border: 3px solid #8b5cf6;
+            border-radius: 16px;
+            color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            box-shadow: 0 8px 30px rgba(139, 92, 246, 0.8);
+            z-index: 10002;
+            max-width: 500px;
+        `;
+
+        popup.innerHTML = `
+            <div style="margin-bottom: 20px; font-size: 18px; color: #a78bfa; font-weight: bold;">
+                📚 Understanding If-Statements
+            </div>
+            <pre style="background: #0f172a; padding: 15px; border-radius: 8px; overflow-x: auto; color: #10b981; line-height: 1.6;">
+${codeDisplay}
+            </pre>
+            <button id="continueBtn" style="
+                margin-top: 20px;
+                padding: 12px 30px;
+                background: #8b5cf6;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+                font-family: 'Courier New', monospace;
+                width: 100%;
+            ">Execute If</button>
+        `;
+
+        document.body.appendChild(popup);
+
+        // Animate popup in
+        gsap.from(popup, {
+            x: -100,
+            opacity: 0,
+            duration: 0.5,
+            ease: "back.out(1.7)"
+        });
+
+        // Handle continue button
+        document.getElementById('continueBtn').onclick = async () => {
+            document.getElementById('continueBtn').disabled = true;
+
+            // Slide popup left
+            await gsap.to(popup, {
+                left: '10%',
+                duration: 0.5,
+                ease: "power2.out"
+            });
+
+            // Build the tree ONLY
+            await buildIfTree(ifStructure);
+
+            // Remove popup
+            await gsap.to(popup, {
+                opacity: 0,
+                duration: 0.3
+            });
+            popup.remove();
+
+            resolve();
+        };
+    });
+}
+
+
+// ============ ANIMATE PRINT SPARK ============
+async function animatePrintSpark(lineNum, text) {
+    console.log(`ðŸŽ† Animating spark from line ${lineNum}: "${text}"`);
+    
+    // Get editor line position
+    const coords = editor.charCoords({line: lineNum, ch: 0}, "page");
+    const startX = coords.left;
+    const startY = coords.top;
+    
+    // Create spark
+    const spark = document.createElement('div');
+    spark.className = 'animation-spark';
+    spark.textContent = text;
+    spark.style.left = `${startX}px`;
+    spark.style.top = `${startY}px`;
+    document.body.appendChild(spark);
+    
+    // Get output panel position
+    const output = document.getElementById('output');
+    const outputLine = document.createElement('div');
+    outputLine.className = 'output-line';
+    outputLine.textContent = text;
+    outputLine.style.opacity = 0;
+    output.appendChild(outputLine);
+    
+    const targetRect = outputLine.getBoundingClientRect();
+    const targetX = targetRect.left + 20;
+    const targetY = targetRect.top + targetRect.height / 2;
+    
+    // Create trail
+    const trail = createDirectionalTrail(startX, startY, targetX, targetY, false);
+    
+    // Play sound
+    sounds.whoosh.play().catch(() => {});
+    
+    // Animate spark
+    await new Promise(resolve => {
+        gsap.to(spark, {
+            left: targetX - 40,
+            top: targetY,
+            duration: 1.2,
+            ease: "power2.out",
+            onUpdate: () => {
+                const rect = spark.getBoundingClientRect();
+                updateTrailParticles(trail, rect.left + rect.width / 2, rect.top + rect.height / 2, startX, startY);
+            },
+            onComplete: () => {
+                spark.remove();
+                removeTrail(trail);
+                
+                // Fade in output line
+                gsap.to(outputLine, { opacity: 1, duration: 0.5 });
+                
+                const action = {type: 'output', element: outputLine, isNew: true};
+                animationHistory.push(action);
+                stepAnimations[currentStep].push(action);
+                
+                resolve();
+            }
+        });
+    });
+}
+
+// ============ BUILD IF-STATEMENT TREE (4-COLUMN STRUCTURE) ============
+async function buildIfTree(ifStructure) {
+    // Create tree container
+    const treeContainer = document.createElement('div');
+    treeContainer.id = 'ifTreeContainer';
+    treeContainer.style.cssText = `
+        position: fixed;
+        top: 50%;
+        right: 5%;
+        transform: translateY(-50%);
+        width: 65%;
+        height: 80%;
+        z-index: 10001;
+    `;
+    document.body.appendChild(treeContainer);
+    
+    // Create SVG for edges
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1;
+    `;
+    treeContainer.appendChild(svg);
+    
+    // ============ STEP 1: CREATE AND ANIMATE BRAIN ============
+    const brain = document.createElement('div');
+    brain.id = 'brainNode';
+    brain.style.cssText = `
+        position: absolute;
+        left: 120px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 80px;
+        height: 80px;
+        background: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        opacity: 0;
+        z-index: 2;
+    `;
+    brain.textContent = '🧠';
+    treeContainer.appendChild(brain);
+    
+    // Animate brain in
+    await gsap.to(brain, {
+        opacity: 1,
+        scale: 1,
+        duration: 0.8,
+        ease: "back.out(1.7)"
+    });
+    
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // ============ CALCULATE LAYOUT ============
+    const numBranches = ifStructure.conditions.length;
+    const branchHeight = 180;
+    const totalHeight = numBranches * branchHeight;
+    const startY = (treeContainer.clientHeight - totalHeight) / 2;
+    
+    const col1X = 120; // Brain X
+    const col2X = 300; // Keyword X (if/elif/else)
+    const col3X = 500; // Condition X (C1, C2, etc)
+    const col4X = 750; // Code block X
+    
+    // ============ STEP 2: BUILD EACH BRANCH ============
+    for (let i = 0; i < numBranches; i++) {
+        const condition = ifStructure.conditions[i];
+        const branchY = startY + (i * branchHeight);
+        
+        // -------- COLUMN 2: KEYWORD NODE --------
+        const keywordNode = document.createElement('div');
+        keywordNode.className = 'tree-keyword-node';// ← Make sure this line exists!
+        keywordNode.style.cssText = `
+            position: absolute;
+            left: ${col2X}px;
+            top: ${branchY + 60}px;
+            padding: 12px 20px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid white;
+            border-radius: 25px;
+            color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+            opacity: 0;
+            z-index: 2;
+        `;
+        keywordNode.textContent = condition.type;
+        treeContainer.appendChild(keywordNode);
+        
+        // Animate keyword node
+        await gsap.to(keywordNode, {
+            opacity: 1,
+            scale: 1,
+            duration: 0.5,
+            ease: "back.out(1.5)"
+        });
+        
+        // Draw edge: Brain → Keyword (curved)
+        drawCurvedEdge(svg, col1X + 40, treeContainer.clientHeight / 2, col2X, branchY + 72);
+        
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // -------- COLUMN 3: CONDITION NODE --------
+        const conditionNode = document.createElement('div');
+        conditionNode.className = 'tree-condition-node';// ← Make sure this line exists!
+        conditionNode.style.cssText = `
+            position: absolute;
+            left: ${col3X}px;
+            top: ${branchY + 50}px;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid white;
+            border-radius: 12px;
+            color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+            opacity: 0;
+            z-index: 2;
+            min-width: 150px;
+        `;
+        
+        // Condition text or "no condition for else"
+        if (condition.type === 'else') {
+            conditionNode.innerHTML = `<div style="font-weight: bold; margin-bottom: 5px;">Condition</div><div style="font-size: 12px; opacity: 0.8;">no condition for else</div>`;
+        } else {
+            conditionNode.innerHTML = `<div style="font-weight: bold; margin-bottom: 5px;">Condition</div><div style="color: #4ade80;">${condition.condition}</div>`;
+        }
+        treeContainer.appendChild(conditionNode);
+        
+        // Animate condition node
+        await gsap.to(conditionNode, {
+            opacity: 1,
+            x: 0,
+            duration: 0.5,
+            ease: "power2.out"
+        });
+        
+        // Draw edge: Keyword → Condition (curved, node-to-node)
+        const keywordRect = keywordNode.getBoundingClientRect();
+        const conditionRect = conditionNode.getBoundingClientRect();
+        const containerRect = treeContainer.getBoundingClientRect();
+        
+        const keywordRightX = keywordRect.right - containerRect.left;
+        const keywordCenterY = keywordRect.top + keywordRect.height / 2 - containerRect.top;
+        const conditionLeftX = conditionRect.left - containerRect.left;
+        const conditionCenterY = conditionRect.top + conditionRect.height / 2 - containerRect.top;
+        
+        drawCurvedEdge(svg, keywordRightX, keywordCenterY, conditionLeftX, conditionCenterY);
+        
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // -------- COLUMN 4: CODE BLOCK --------
+        let blockLabel = '';
+        if (condition.type === 'if') {
+            blockLabel = 'if block';
+        } else if (condition.type === 'elif') {
+            // Count which elif this is
+            let elifCount = 0;
+            for (let j = 0; j <= i; j++) {
+                if (ifStructure.conditions[j].type === 'elif') elifCount++;
+            }
+            blockLabel = `${elifCount}${getOrdinalSuffix(elifCount)} elif block`;
+        } else {
+            blockLabel = 'else block';
+        }
+        
+        let codeContent = '';
+        condition.block.forEach(blockItem => {
+            codeContent += `${blockItem.code.trim()}\n`;
+        });
+        
+        const codeBlock = document.createElement('div');
+        codeBlock.className = 'tree-code-block';// ← Make sure this line exists!
+        codeBlock.style.cssText = `
+            position: absolute;
+            left: ${col4X}px;
+            top: ${branchY + 20}px;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid white;
+            border-radius: 12px;
+            color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre;
+            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+            opacity: 0;
+            z-index: 2;
+            min-width: 200px;
+        `;
+        codeBlock.innerHTML = `<div style="font-weight: 900; font-size: 16px; margin-bottom: 10px; color: #a78bfa; text-transform: uppercase; letter-spacing: 1px;">${blockLabel}</div><div style="color: #10b981; line-height: 1.5;">${codeContent}</div>`;
+        treeContainer.appendChild(codeBlock);
+        
+        // Animate code block
+        await gsap.to(codeBlock, {
+            opacity: 1,
+            x: 0,
+            duration: 0.5,
+            ease: "power2.out"
+        });
+        
+        // Draw edge: Condition → Code Block (curved, node-to-node)
+        const codeBlockRect = codeBlock.getBoundingClientRect();
+        
+        const conditionRightX = conditionRect.right - containerRect.left;
+        const codeBlockLeftX = codeBlockRect.left - containerRect.left;
+        const codeBlockCenterY = codeBlockRect.top + codeBlockRect.height / 2 - containerRect.top;
+        
+        drawCurvedEdge(svg, conditionRightX, conditionCenterY, codeBlockLeftX, codeBlockCenterY);
+        
+        await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    
+    console.log('✅ 4-column tree built successfully!');
+}
+
+// ============ HELPER: DRAW CURVED EDGE (NODE-TO-NODE) ============
+function drawCurvedEdge(svg, x1, y1, x2, y2) {
+    // Calculate control points for smooth curve
+    const midX = (x1 + x2) / 2;
+    
+    // Create smooth quadratic bezier curve
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const pathData = `M ${x1} ${y1} Q ${midX} ${y1}, ${midX} ${(y1 + y2) / 2} T ${x2} ${y2}`;
+    path.setAttribute('d', pathData);
+    path.setAttribute('stroke', 'white');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('opacity', '0');
+    svg.appendChild(path);
+    
+    // Animate edge
+    gsap.to(path, {
+        attr: { opacity: 0.4 },
+        duration: 0.4,
+        ease: "power2.out"
+    });
+}
+
+// ============ HELPER: GET ORDINAL SUFFIX ============
+function getOrdinalSuffix(num) {
+    if (num === 1) return 'st';
+    if (num === 2) return 'nd';
+    if (num === 3) return 'rd';
+    return 'th';
+}
+
+// ============ REMOVE IF-STATEMENT TREE ============
+async function removeIfTree() {
+    const treeContainer = document.getElementById('ifTreeContainer');
+    if (!treeContainer) return;
+    
+    await gsap.to(treeContainer, {
+        opacity: 0,
+        duration: 0.5
+    });
+    
+    treeContainer.remove();
+}
+
+// ============ CREATE STATIC THOUGHT TRAIL ============
+async function createStaticThoughtTrail() {
+    // Get brain position
+    const brain = document.getElementById('brainNode');
+    if (!brain) return;
+    
+    const brainRect = brain.getBoundingClientRect();
+    const brainX = brainRect.left + brainRect.width / 2;
+    const brainY = brainRect.top + brainRect.height / 2;
+    
+    // Calculate thought box position (same as in createBrainThoughtBox)
+    const boxLeft = 120;
+    const boxTop = '34%';
+    
+    // Convert boxTop percentage to pixels
+    const boxTopPx = (parseFloat(boxTop) / 100) * window.innerHeight;
+    const boxX = boxLeft + 400; // ← Left border of box (aim for edge)
+    const boxY = boxTopPx - 60; // ← Vertical center of box
+    
+    // Get SVG container
+    const svg = document.getElementById('trailSvg');
+    
+    // Calculate curved path (smooth bezier curve)
+    const midX = (brainX + boxX) / 2;
+    const midY = (brainY + boxY) / 2 - 50; // Curve upward slightly
+    
+    // Create particles along the curve
+    const numParticles = 12; // Number of dots in trail
+    const particles = [];
+    
+    for (let i = 0; i < numParticles; i++) {
+        const t = i / (numParticles - 1); // Progress from 0 to 1
+        
+        // Quadratic bezier formula
+        const x = Math.pow(1-t, 2) * brainX + 2 * (1-t) * t * midX + Math.pow(t, 2) * boxX;
+        const y = Math.pow(1-t, 2) * brainY + 2 * (1-t) * t * midY + Math.pow(t, 2) * boxY;
+        
+        // Size gradient: smaller near brain, bigger near box
+        const size = 3 + (i / numParticles) * 5; // 3px → 8px
+        
+        // Create circle
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', x);
+        circle.setAttribute('cy', y);
+        circle.setAttribute('r', size);
+        circle.setAttribute('fill', 'white');
+        circle.setAttribute('opacity', '0');
+        circle.classList.add('thought-trail-particle');
+        
+        svg.appendChild(circle);
+        particles.push({element: circle, delay: i * 0.03}); // Stagger animation
+    }
+    
+    // Animate particles appearing one by one
+    for (const particle of particles) {
+        await new Promise(resolve => setTimeout(resolve, particle.delay * 1000));
+        gsap.to(particle.element, {
+            attr: { opacity: 0.8 },
+            duration: 0.3,
+            ease: "power2.out"
+        });
+    }
+    
+    console.log('✅ Static thought trail created!');
+}
+
+// ============ REMOVE STATIC THOUGHT TRAIL ============
+function removeStaticThoughtTrail() {
+    const particles = document.querySelectorAll('.thought-trail-particle');
+    
+    gsap.to(particles, {
+        attr: { opacity: 0 },
+        duration: 0.5,
+        onComplete: () => {
+            particles.forEach(p => p.remove());
+            console.log('✅ Thought trail removed!');
+        }
+    });
+}
+
+// ============ UPDATED: CREATE BRAIN THOUGHT BOX ============
+async function createBrainThoughtBox() {
+    // First, create the trail
+    await createStaticThoughtTrail();
+    
+    // Wait a tiny bit for trail to finish
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Now create the thought box (rest is same as before)
+    const thoughtBox = document.createElement('div');
+    thoughtBox.id = 'brainThoughtBox';
+    
+    // 🔧 ADJUSTABLE PARAMETERS:
+    const boxLeft = 120;        // ← CHANGE THIS: Distance from left edge (px)
+    const boxTop = '34%';       // ← CHANGE THIS: Vertical position (%, px, or 'top'/'bottom')
+    const boxWidth = 400;       // ← CHANGE THIS: Box width (px)
+    const boxMinHeight = 180;   // ← CHANGE THIS: Minimum box height (px)
+    const boxPadding = 25;      // ← CHANGE THIS: Internal spacing (px)
+    
+    thoughtBox.style.cssText = `
+        position: fixed;
+        left: ${boxLeft}px;
+        top: ${boxTop};
+        transform: translateY(-50%);
+        width: ${boxWidth}px;
+        min-height: ${boxMinHeight}px;
+        padding: ${boxPadding}px;
+        background: #000000;
+        border: 3px solid #fbbf24;
+        border-radius: 16px;
+        box-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
+        z-index: 10002;
+        opacity: 0;
+        color: white;
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+    `;
+    
+    thoughtBox.innerHTML = `
+        <div id="brainThoughtContent" style="opacity: 1; margin-bottom: 15px;"></div>
+        
+        <button id="continueThinkingBtn" style="
+            width: 100%;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+        ">CONTINUE THINKING</button>
+    `;
+    
+    document.body.appendChild(thoughtBox);
+    
+    // Fade in
+    await gsap.to(thoughtBox, {
+        opacity: 1,
+        duration: 0.8
+    });
+    
+    // Start pulsing animation
+    startThoughtBoxPulse();
+    
+    // Add hover effect to button
+    const btn = document.getElementById('continueThinkingBtn');
+    btn.addEventListener('mouseenter', () => {
+        gsap.to(btn, {
+            scale: 1.05,
+            boxShadow: '0 8px 20px rgba(139, 92, 246, 0.6)',
+            duration: 0.2
+        });
+    });
+    btn.addEventListener('mouseleave', () => {
+        gsap.to(btn, {
+            scale: 1,
+            boxShadow: 'none',
+            duration: 0.2
+        });
+    });
+}
+
+// ============ UPDATED: REMOVE BRAIN THOUGHT BOX ============
+function removeBrainThoughtBox() {
+    const thoughtBox = document.getElementById('brainThoughtBox');
+    const trailParticles = document.querySelectorAll('.thought-trail-particle');
+    
+    if (!thoughtBox) return;
+    
+    // Fade out box AND trail together
+    gsap.to([thoughtBox, ...trailParticles], {
+        opacity: 0,
+        duration: 0.5,
+        onComplete: () => {
+            thoughtBox.remove();
+            trailParticles.forEach(p => p.remove());
+        }
+    });
+}
+// THINKING BUBLE CODE
+// ============================================
+// TREE ANIMATION SYSTEM FOR IF-STATEMENTS
+// ============================================
+
+// ============ HELPER: GET NODES FOR A BRANCH ============
+function getBranchNodes(branchIndex) {
+    const treeContainer = document.getElementById('ifTreeContainer');
+    if (!treeContainer) return null;
+    
+    // Get all nodes for this branch
+    const keywordNodes = treeContainer.querySelectorAll('.tree-keyword-node');
+    const conditionNodes = treeContainer.querySelectorAll('.tree-condition-node');
+    const codeBlocks = treeContainer.querySelectorAll('.tree-code-block');
+    
+    if (branchIndex >= keywordNodes.length) return null;
+    
+    return {
+        keyword: keywordNodes[branchIndex],
+        condition: conditionNodes[branchIndex],
+        codeBlock: codeBlocks[branchIndex]
+    };
+}
+
+// ============ HELPER: GET EDGES FOR A BRANCH ============
+function getBranchEdges(branchIndex) {
+    const svg = document.querySelector('#ifTreeContainer svg');
+    if (!svg) return null;
+    
+    const allPaths = svg.querySelectorAll('path');
+    // Each branch has 3 edges: brain→keyword, keyword→condition, condition→code
+    const startIdx = branchIndex * 3;
+    
+    return {
+        brainToKeyword: allPaths[startIdx],
+        keywordToCondition: allPaths[startIdx + 1],
+        conditionToCode: allPaths[startIdx + 2]
+    };
+}
+
+// ============ 1. HIGHLIGHT CONDITION NODE (YELLOW GLOW) ============
+async function highlightConditionNode(branchIndex) {
+    const nodes = getBranchNodes(branchIndex);
+    if (!nodes) return;
+    
+    console.log(`🟡 Highlighting condition ${branchIndex + 1}...`);
+    
+    // Add yellow glow to condition node
+    await gsap.to(nodes.condition, {
+        boxShadow: '0 0 30px rgba(234, 179, 8, 0.9)',
+        borderColor: '#fbbf24',
+        duration: 0.5,
+        ease: "power2.out"
+    });
+}
+
+// ============ 2. ANIMATE ELECTRICITY FLOW ============
+async function animateElectricity(branchIndex) {
+    const nodes = getBranchNodes(branchIndex);
+    const edges = getBranchEdges(branchIndex);
+    if (!nodes || !edges) return;
+    
+    console.log(`⚡ Electricity flowing to condition ${branchIndex + 1}...`);
+    
+    // Create electricity spark
+    const brain = document.getElementById('brainNode');
+    const brainRect = brain.getBoundingClientRect();
+    const conditionRect = nodes.condition.getBoundingClientRect();
+    const treeContainer = document.getElementById('ifTreeContainer');
+    const containerRect = treeContainer.getBoundingClientRect();
+    
+    const spark = document.createElement('div');
+    spark.className = 'electricity-spark';
+    spark.style.cssText = `
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        background: #fbbf24;
+        border-radius: 50%;
+        box-shadow: 0 0 20px #fbbf24;
+        z-index: 10;
+        left: ${brainRect.right - containerRect.left}px;
+        top: ${brainRect.top + brainRect.height / 2 - containerRect.top}px;
+    `;
+    treeContainer.appendChild(spark);
+    
+    // Calculate path through keyword to condition
+    const keywordRect = nodes.keyword.getBoundingClientRect();
+    const keywordX = keywordRect.left + keywordRect.width / 2 - containerRect.left;
+    const keywordY = keywordRect.top + keywordRect.height / 2 - containerRect.top;
+    const conditionX = conditionRect.left - containerRect.left;
+    const conditionY = conditionRect.top + conditionRect.height / 2 - containerRect.top;
+    
+    // Animate spark along path
+    const tl = gsap.timeline();
+    
+    // Segment 1: Brain → Keyword
+    tl.to(spark, {
+        left: keywordX,
+        top: keywordY,
+        duration: 0.4,
+        ease: "power2.inOut"
+    });
+    
+    // Segment 2: Keyword → Condition
+    tl.to(spark, {
+        left: conditionX,
+        top: conditionY,
+        duration: 0.4,
+        ease: "power2.inOut"
+    });
+    
+    // Light up edges as spark passes
+    tl.to(edges.brainToKeyword, {
+        attr: { opacity: 1, stroke: '#fbbf24' },
+        duration: 0.3
+    }, 0);
+    
+    tl.to(edges.keywordToCondition, {
+        attr: { opacity: 1, stroke: '#fbbf24' },
+        duration: 0.3
+    }, 0.4);
+    
+    await tl;
+    
+    // Remove spark
+    spark.remove();
+    
+    console.log('✅ Electricity arrived!');
+}
+
+// ============ 3. TRANSFORM TO TRUE/FALSE BUTTON ============
+// ============ UPDATED: TRANSFORM TO TRUE/FALSE BUTTON (NOW CLICKABLE!) ============
+async function transformToButton(branchIndex, isTrue, condition) {
+    const nodes = getBranchNodes(branchIndex);
+    if (!nodes) return;
+    
+    const buttonColor = isTrue ? '#10b981' : '#ef4444';
+    const buttonText = isTrue ? 'TRUE' : 'FALSE';
+    
+    console.log(`🔄 Transforming to ${buttonText} button...`);
+    
+    // Create button element (not just styled div)
+    nodes.condition.innerHTML = '';
+    
+    const button = document.createElement('button');
+    button.textContent = buttonText;
+    button.style.cssText = `
+        width: 100%;
+        padding: 20px 30px;
+        background: ${buttonColor};
+        border: 3px solid white;
+        border-radius: 12px;
+        color: white;
+        font-family: 'Courier New', monospace;
+        font-size: 24px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    `;
+    
+    // Add hover effect
+    button.addEventListener('mouseenter', () => {
+        button.style.transform = 'scale(1.05)';
+        button.style.boxShadow = '0 8px 20px rgba(255, 255, 255, 0.5)';
+    });
+    
+    button.addEventListener('mouseleave', () => {
+        button.style.transform = 'scale(1)';
+        button.style.boxShadow = '0 4px 15px rgba(255, 255, 255, 0.4)';
+    });
+    
+    // ✨ ADD CLICK HANDLER - Opens popup!
+    button.addEventListener('click', () => {
+        console.log('🖱️ Button clicked! Opening expression evaluator...');
+        openExpressionEvaluator(condition, isTrue);
+    });
+    
+    nodes.condition.appendChild(button);
+    
+    // Keep parent container styling
+    nodes.condition.style.cssText = `
+        position: absolute;
+        left: ${nodes.condition.style.left};
+        top: ${nodes.condition.style.top};
+        z-index: 2;
+        min-width: 150px;
+    `;
+    
+    // If TRUE, start pulsing animation
+    if (isTrue) {
+        const pulseTimeline = gsap.timeline({ repeat: -1 });
+        pulseTimeline.to(button, {
+            background: '#059669', // Dark green
+            duration: 1,
+            ease: "power1.inOut"
+        });
+        pulseTimeline.to(button, {
+            background: '#10b981', // Light green
+            duration: 1,
+            ease: "power1.inOut"
+        });
+        
+        // Store timeline for later cleanup
+        nodes.condition.pulseTimeline = pulseTimeline;
+    }
+    
+    console.log(`✅ Button transformed to ${buttonText} and is now CLICKABLE!`);
+}
+
+// ============ NEW: OPEN EXPRESSION EVALUATOR POPUP ============
+function openExpressionEvaluator(condition, result) {
+    console.log('🚀 Opening Expression Evaluator popup...');
+    
+    // Prepare data to send
+    const data = {
+        expression: condition.condition,
+        variables: currentVariables,
+        result: result
+    };
+    
+    console.log('📦 Sending data:', data);
+    
+    // Open popup window
+    const popup = window.open(
+        '../shared/expressionEvaluator.html',
+        'ExpressionEvaluator',
+        'width=700,height=500,scrollbars=yes,resizable=yes'
+    );
+    
+    // Send data after popup loads
+    if (popup) {
+        popup.addEventListener('load', () => {
+            console.log('✅ Popup loaded, sending data via postMessage...');
+            popup.postMessage(data, '*');
+        });
+        
+        // Fallback: Send data after short delay (in case load event doesn't fire)
+        setTimeout(() => {
+            popup.postMessage(data, '*');
+        }, 500);
+    } else {
+        console.error('❌ Failed to open popup - check if popups are blocked!');
+        alert('Popup blocked! Please allow popups for this site.');
+    }
+}
+
+
+// ============ 4. COLOR PATH FLOW (SEQUENTIAL) ============
+async function colorPathFlow(branchIndex, color) {
+    const nodes = getBranchNodes(branchIndex);
+    const edges = getBranchEdges(branchIndex);
+    if (!nodes || !edges) return;
+    
+    const colorHex = color === 'green' ? '#10b981' : '#ef4444';
+    console.log(`🌊 Flowing ${color} through path ${branchIndex + 1}...`);
+    
+    // Sequential coloring
+    const tl = gsap.timeline();
+    
+    // 1. Brain → Keyword edge
+    tl.to(edges.brainToKeyword, {
+        attr: { stroke: colorHex, opacity: 1 },
+        duration: 0.3
+    });
+    
+    // 2. Keyword node
+    tl.to(nodes.keyword, {
+        borderColor: colorHex,
+        boxShadow: `0 4px 15px ${colorHex}`,
+        duration: 0.3
+    }, "-=0.1");
+    
+    // 3. Keyword → Condition edge
+    tl.to(edges.keywordToCondition, {
+        attr: { stroke: colorHex, opacity: 1 },
+        duration: 0.3
+    });
+    
+    // 4. Condition → Code edge
+    tl.to(edges.conditionToCode, {
+        attr: { stroke: colorHex, opacity: 1 },
+        duration: 0.3
+    });
+    
+    // 5. Code block node (if green, add extra glow)
+    if (color === 'green') {
+        tl.to(nodes.codeBlock, {
+            borderColor: colorHex,
+            boxShadow: `0 0 40px ${colorHex}`,
+            duration: 0.5,
+            ease: "power2.out"
+        });
+    } else {
+        tl.to(nodes.codeBlock, {
+            borderColor: colorHex,
+            boxShadow: `0 4px 15px ${colorHex}`,
+            duration: 0.3
+        });
+    }
+    
+    await tl;
+    console.log(`✅ ${color} flow complete!`);
+}
+
+// ============ 5. DISSOLVE PATHS (PARTICLE BURST) ============
+async function dissolvePaths(branchIndices) {
+    if (!branchIndices || branchIndices.length === 0) return;
+    
+    console.log(`💥 Dissolving paths: ${branchIndices.join(', ')}...`);
+    
+    const allElements = [];
+    
+    // Collect all nodes and edges to dissolve
+    branchIndices.forEach(idx => {
+        const nodes = getBranchNodes(idx);
+        const edges = getBranchEdges(idx);
+        
+        if (nodes) {
+            allElements.push(nodes.keyword, nodes.condition, nodes.codeBlock);
+            
+            // Stop pulse animation if it exists
+            if (nodes.condition.pulseTimeline) {
+                nodes.condition.pulseTimeline.kill();
+            }
+        }
+        
+        if (edges) {
+            allElements.push(edges.brainToKeyword, edges.keywordToCondition, edges.conditionToCode);
+        }
+    });
+    
+    // Create particle burst effect
+    const particles = [];
+    allElements.forEach(el => {
+        if (!el) return;
+        
+        const rect = el.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        // Create 8 particles per element
+        for (let i = 0; i < 8; i++) {
+            const particle = document.createElement('div');
+            particle.style.cssText = `
+                position: fixed;
+                width: 6px;
+                height: 6px;
+                background: white;
+                border-radius: 50%;
+                left: ${centerX}px;
+                top: ${centerY}px;
+                z-index: 100;
+                pointer-events: none;
+            `;
+            document.body.appendChild(particle);
+            
+            // Random direction
+            const angle = (Math.PI * 2 * i) / 8;
+            const distance = 50 + Math.random() * 50;
+            const targetX = centerX + Math.cos(angle) * distance;
+            const targetY = centerY + Math.sin(angle) * distance;
+            
+            particles.push({ element: particle, targetX, targetY });
+        }
+    });
+    
+    // Animate particles and fade out original elements
+    const tl = gsap.timeline();
+    
+    // Fade out original elements
+    tl.to(allElements.filter(el => el), {
+        opacity: 0,
+        duration: 0.5
+    }, 0);
+    
+    // Burst particles outward
+    particles.forEach(p => {
+        tl.to(p.element, {
+            left: p.targetX,
+            top: p.targetY,
+            opacity: 0,
+            duration: 0.8,
+            ease: "power2.out",
+            onComplete: () => p.element.remove()
+        }, 0);
+    });
+    
+    await tl;
+    
+    // Remove original elements
+    allElements.forEach(el => {
+        if (el && el.remove) el.remove();
+    });
+    
+    console.log('✅ Paths dissolved!');
+}
+
+
+// ============ UPDATED: EVALUATE CONDITIONS (PASS CONDITION OBJECT) ============
+async function evaluateConditionsWithThought(ifStructure) {
+    console.log('🔍 Evaluating conditions with animations...');
+    
+    for (let i = 0; i < ifStructure.conditions.length; i++) {
+        const condition = ifStructure.conditions[i];
+        
+        // Update thought: "Checking condition X"
+        await updateBrainThought(`
+            <p style="margin-bottom: 10px;">🔍 <strong>Checking condition ${i + 1}/${ifStructure.conditions.length}:</strong></p>
+            <p style="font-size: 16px; color: #fbbf24; margin: 12px 0; font-family: 'Courier New', monospace;">${condition.condition}</p>
+            <p style="color: #94a3b8;">Click Continue to evaluate...</p>
+        `);
+        
+        // Wait for user to click Continue
+        await waitForContinueThinking();
+        
+        // 🟡 STEP 1: Highlight condition node (yellow)
+        await highlightConditionNode(i);
+        
+        // ⚡ STEP 2: Animate electricity flowing
+        await animateElectricity(i);
+        
+        // Update thought: evaluating
+        await updateBrainThought(`
+            <p style="color: #fbbf24; font-size: 16px;">⚙️ Evaluating condition...</p>
+        `);
+        
+        await waitForContinueThinking();
+        
+        // Evaluate condition
+        const result = condition.type === 'else' ? true : await evaluateConditionExpression(condition.condition);
+        
+        // 🔄 STEP 3: Transform to TRUE/FALSE button (NOW WITH CONDITION OBJECT!)
+        await transformToButton(i, result, condition);
+        
+        // 🌊 STEP 4: Color path flow
+        await colorPathFlow(i, result ? 'green' : 'red');
+        
+        // Update thought with result
+        await updateBrainThought(`
+            <p style="font-size: 24px; font-weight: bold; color: ${result ? '#10b981' : '#ef4444'}; margin: 15px 0; text-align: center;">
+                ${result ? '✅ TRUE!' : '❌ FALSE!'}
+            </p>
+            <p style="color: #e2e8f0;">${result 
+                ? '🎉 This condition passed! Click the button to see details.' 
+                : '⏭️ Condition failed. Click the button to see why.'}
+            </p>
+        `);
+        
+        // Wait for user acknowledgment
+        await waitForContinueThinking();
+        
+        if (result) {
+            // 💥 STEP 5: Found TRUE - dissolve all other paths
+            const pathsToDissolve = [];
+            for (let j = 0; j < ifStructure.conditions.length; j++) {
+                if (j !== i) pathsToDissolve.push(j);
+            }
+            
+            if (pathsToDissolve.length > 0) {
+                await dissolvePaths(pathsToDissolve);
+            }
+            
+            // Show final message
+            await updateBrainThought(`
+                <p style="font-size: 20px; color: #10b981; text-align: center; margin: 15px 0;">
+                    ✅ Correct block of code is chosen!
+                </p>
+                <p style="color: #e2e8f0;">This is the code that will execute.</p>
+            `);
+            await waitForContinueThinking();
+            
+            // Execute this branch
+            for (const blockItem of condition.block) {
+                await pyodide.runPythonAsync(blockItem.code);
+            }
+            
+            return i;
+        }
+    }
+    
+    // No condition was true - dissolve all paths
+    await updateBrainThought(`
+        <p style="font-size: 20px; color: #ef4444; text-align: center; margin: 15px 0;">⚠️ All conditions FALSE</p>
+        <p style="color: #94a3b8;">No block will execute.</p>
+    `);
+    
+    await waitForContinueThinking();
+    
+    // Dissolve all paths
+    const allPaths = ifStructure.conditions.map((_, idx) => idx);
+    await dissolvePaths(allPaths);
+    
+    // Show final message
+    await updateBrainThought(`
+        <p style="font-size: 20px; color: #ef4444; text-align: center; margin: 15px 0;">
+            ⚠️ No block will execute
+        </p>
+        <p style="color: #94a3b8;">All conditions were false.</p>
+    `);
+    await waitForContinueThinking();
+    
+    return -1;
+}
+
+
+
+
+// ============ START THOUGHT BOX PULSE ============
+function startThoughtBoxPulse() {
+    const thoughtBox = document.getElementById('brainThoughtBox');
+    if (!thoughtBox) return;
+    
+    gsap.to(thoughtBox, {
+        boxShadow: '0 0 40px rgba(251, 191, 36, 1)',
+        duration: 1,
+        yoyo: true,
+        repeat: -1,
+        ease: "power1.inOut"
+    });
+}
+
+// ============ UPDATE BRAIN THOUGHT ============
+async function updateBrainThought(message) {
+    const content = document.getElementById('brainThoughtContent');
+    if (!content) return;
+    
+    // Fade out
+    await gsap.to(content, {
+        opacity: 0,
+        duration: 0.3
+    });
+    
+    // Update text
+    content.innerHTML = message;
+    
+    // Fade in
+    await gsap.to(content, {
+        opacity: 1,
+        duration: 0.3
+    });
+}
+
+
+
+// ============ WAIT FOR CONTINUE THINKING ============
+function waitForContinueThinking() {
+    return new Promise((resolve) => {
+        const btn = document.getElementById('continueThinkingBtn');
+        
+        // Enable button
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        
+        // Add event listener
+        const handler = () => {
+            // Play sound if available
+            if (typeof sounds !== 'undefined' && sounds.enter) {
+                sounds.enter.play().catch(() => {});
+            }
+            
+            // Disable button
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'not-allowed';
+            
+            // Remove listener
+            btn.removeEventListener('click', handler);
+            
+            resolve();
+        };
+        
+        btn.addEventListener('click', handler);
+    });
+}
+
+// ============ GET INITIAL THOUGHT MESSAGE ============
+function getInitialThoughtMessage(ifStructure) {
+    const numConditions = ifStructure.conditions.length;
+    const hasElse = ifStructure.conditions.some(c => c.type === 'else');
+    
+    return `
+        <p style="margin-bottom: 12px;">🧠 <strong>Brain's job:</strong> Check each condition in order.</p>
+        <p style="margin-bottom: 12px;">✨ <strong>The rule:</strong> Execute the <em>first</em> TRUE condition's block.</p>
+        <p style="margin-bottom: 12px;">🎯 <strong>Result:</strong> Only ONE block runs${hasElse ? ' (or else if all fail)' : ''}.</p>
+        <p style="color: #fbbf24; margin-top: 15px;">Ready to evaluate ${numConditions} condition${numConditions > 1 ? 's' : ''}...</p>
+    `;
+}
+
+
+
+async function evaluateConditionExpression(expr) {
+    try {
+        let pythonExpr = expr;
+        Object.keys(currentVariables).forEach(varName => {
+            const regex = new RegExp(`\\b${varName}\\b`, 'g');
+            pythonExpr = pythonExpr.replace(regex, currentVariables[varName]);
+        });
+        
+        const result = await pyodide.runPythonAsync(`bool(${pythonExpr})`);
+        return result;
+    } catch (error) {
+        console.error('Evaluation error:', error);
+        return false;
+    }
+}
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+// Continue in Part 3...
+
+/* ===================================
+   Level 6: If Statements - NEW APPROACH
+   Part 3: Input, Print, Helpers
+   =================================== */
+
+// ============ INPUT VALIDATION ============
+function isValidIntInput(value) {
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    const num = Number(trimmed);
+    return !isNaN(num) && Number.isInteger(num);
+}
+
+// ============ INPUT HANDLING ============
+async function handleInputStatement(step) {
+    const inputMatch = step.code.match(/(\w+)\s*=\s*(int\()?input\(/);
+    if (!inputMatch) return;
+    const varName = inputMatch[1];
+    const hasInt = !!inputMatch[2];
+    const userInput = await showInteractiveInput("Enter value:");
+    
+    placeholderValues[`USER_INPUT_${inputCounter}`] = userInput;
+    inputCounter++;
+    
+    if (hasInt && !isValidIntInput(userInput)) {
+        await animateInputToMemoryWithMachine(varName, userInput, hasInt, false);
+        showTeacher("❌ Oops! int() only works with whole numbers. Try again!");
+        inputCounter--;
+        return handleInputStatement(step);
+    }
+    
+    pyodide.globals.set("_temp_input", userInput);
+    await pyodide.runPythonAsync(step.code.replace("input()", "_temp_input"));
+    const value = pyodide.globals.get(varName).toString();
+    currentVariables[varName] = value;
+    placeholderValues[varName] = value;
+    
+    await animateInputToMemoryWithMachine(varName, value, hasInt, true);
+    
+    await showSmartExplanation(currentStep);
+    currentStep++;
+    updateStepIndicator();
+    updateButtons();
+    
+    if (currentStep < totalSteps) {
+        document.getElementById('stepBtn').disabled = false;
+    }
+}
+
+// ============ INTERACTIVE INPUT ============
+async function showInteractiveInput(promptText) {
+    return new Promise((resolve) => {
+        const output = document.getElementById('output');
+        const inputLine = document.createElement('div');
+        inputLine.className = 'input-line';
+        inputLine.innerHTML = `<span class="prompt-text">>> ${promptText}</span><input type="text" class="terminal-input" autofocus />`;
+        output.appendChild(inputLine);
+        const inputField = inputLine.querySelector('.terminal-input');
+        
+        inputField.addEventListener('input', () => {
+            sounds.keystroke.currentTime = 0;
+            sounds.keystroke.play().catch(() => {});
+        });
+        
+        inputField.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && inputField.value.trim()) {
+                const value = inputField.value.trim();
+                sounds.enter.play().catch(() => {});
+                inputField.disabled = true;
+                
+                const action = {type: 'input', element: inputLine, isNew: true};
+                animationHistory.push(action);
+                stepAnimations[currentStep].push(action); 
+                
+                gsap.to(inputField, {
+                    textShadow: '0 0 20px #4ade80',
+                    duration: 0.3,
+                    onComplete: () => resolve(value)
+                });
+            }
+        });
+    });
+}
+
+// ============ MACHINE CREATION ============
+function createIntMachine(midX, midY) {
+    const machine = document.createElement('div');
+    machine.className = 'int-machine';
+    machine.style.left = `${midX}px`;
+    machine.style.top = `${midY}px`;
+    machine.innerHTML = `
+        <div class="machine-body">
+            <div class="machine-label">int()</div>
+            <svg class="machine-gears" viewBox="0 0 120 80">
+                <g class="gear gear-1" transform="translate(35, 40)">
+                    <circle r="18" fill="#8b5cf6" stroke="#fff" stroke-width="2"/>
+                    <circle r="3" fill="#fff"/>
+                    <rect x="-2" y="-22" width="4" height="8" fill="#fff" rx="1"/>
+                    <rect x="-2" y="14" width="4" height="8" fill="#fff" rx="1"/>
+                    <rect x="-22" y="-2" width="8" height="4" fill="#fff" rx="1"/>
+                    <rect x="14" y="-2" width="8" height="4" fill="#fff" rx="1"/>
+                </g>
+                <g class="gear gear-2" transform="translate(85, 40)">
+                    <circle r="15" fill="#7c3aed" stroke="#fff" stroke-width="2"/>
+                    <circle r="3" fill="#fff"/>
+                    <rect x="-2" y="-18" width="4" height="6" fill="#fff" rx="1"/>
+                    <rect x="-2" y="12" width="4" height="6" fill="#fff" rx="1"/>
+                    <rect x="-18" y="-2" width="6" height="4" fill="#fff" rx="1"/>
+                    <rect x="12" y="-2" width="6" height="4" fill="#fff" rx="1"/>
+                </g>
+            </svg>
+            <div class="machine-intake"></div>
+            <div class="machine-output"></div>
+        </div>`;
+    document.body.appendChild(machine);
+    return machine;
+}
+
+// ============ MACHINE ANIMATION ============
+async function animateInputToMemoryWithMachine(varName, value, hasInt, isValid) {
+    const inputField = document.querySelector('.terminal-input[disabled]:last-of-type');
+    if (!inputField) return;
+    
+    const inputRect = inputField.getBoundingClientRect();
+    const textCenterX = inputRect.left + 8 + (inputField.value.length * 4.5);
+    
+    const spark = document.createElement('div');
+    spark.className = 'animation-spark';
+    spark.textContent = value;
+    spark.style.left = `${textCenterX - 40}px`;
+    spark.style.top = `${inputRect.top + inputRect.height / 2}px`;
+    document.body.appendChild(spark);
+    
+    const bank = document.getElementById('memoryBank');
+    const box = document.createElement('div');
+    box.id = `box-${varName}`;
+    
+    if (!hasInt) {
+        box.className = 'variable-box string-box';
+        box.innerHTML = `<span class="box-label">${varName}</span><span class="box-value">${value}</span>`;
+        bank.appendChild(box);
+        const targetRect = box.getBoundingClientRect();
+        const trail = createDirectionalTrail(textCenterX, inputRect.top + inputRect.height / 2, 
+            targetRect.left + targetRect.width / 2, targetRect.top + targetRect.height / 2, false);
+        sounds.whoosh.play().catch(() => {});
+        
+        await new Promise(resolve => {
+            gsap.to(spark, {
+                left: targetRect.left + targetRect.width / 2 - 40,
+                top: targetRect.top + targetRect.height / 2,
+                duration: 1.5,
+                ease: "power2.inOut",
+                onUpdate: () => {
+                    const rect = spark.getBoundingClientRect();
+                    updateTrailParticles(trail, rect.left + rect.width / 2, rect.top + rect.height / 2, 
+                        textCenterX, inputRect.top + inputRect.height / 2);
+                },
+                onComplete: () => {
+                    spark.remove();
+                    removeTrail(trail);
+                    gsap.to(box, {opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.7)", onComplete: resolve});
+                    
+                    const action = {type: 'memory', element: box, isNew: true};
+                    animationHistory.push(action);
+                    stepAnimations[currentStep].push(action);
+                }
+            });
+        });
+    } else {
+        box.className = 'variable-box number-box';
+        box.innerHTML = `<span class="box-label">${varName}</span><span class="box-value">${value}</span>`;
+        bank.appendChild(box);
+        const targetRect = box.getBoundingClientRect();
+        
+        const startX = textCenterX;
+        const startY = inputRect.top + inputRect.height / 2;
+        const endX = targetRect.left + targetRect.width / 2;
+        const endY = targetRect.top + targetRect.height / 2;
+        const midX = (startX + endX) / 2;
+        const midY = (startY + endY) / 2;
+        
+        const machine = createIntMachine(midX, midY);
+        const machineRect = machine.getBoundingClientRect();
+        const intakeX = machineRect.left + 30;
+        const intakeY = machineRect.top + machineRect.height / 2;
+        const outputX = machineRect.right - 30;
+        const outputY = machineRect.top + machineRect.height / 2;
+        
+        const trail1 = createDirectionalTrail(startX, startY, intakeX, intakeY, false);
+        sounds.whoosh.play().catch(() => {});
+        
+        await new Promise(resolve => {
+            gsap.to(spark, {
+                left: intakeX - 40, top: intakeY, scale: 0.7, duration: 1.2, ease: "power2.in",
+                onUpdate: () => {
+                    const rect = spark.getBoundingClientRect();
+                    updateTrailParticles(trail1, rect.left + rect.width / 2, rect.top + rect.height / 2, startX, startY);
+                },
+                onComplete: () => { removeTrail(trail1); spark.style.opacity = '0'; resolve(); }
+            });
+        });
+        
+        if (isValid) {
+            sounds.machineGear.currentTime = 0;
+            sounds.machineGear.play().catch(() => {});
+
+            const tl = gsap.timeline();
+            tl.to('.gear-1', {rotation: 720, duration: 3, ease: "none", transformOrigin: "center"}, 0)
+              .to('.gear-2', {rotation: -720, duration: 3, ease: "none", transformOrigin: "center"}, 0)
+              .to('.machine-body', {boxShadow: '0 0 50px rgba(16, 185, 129, 0.9)', duration: 0.6, yoyo: true, repeat: 2}, 0.5)
+              .call(() => {
+                  sounds.notification.currentTime = 0;
+                  sounds.notification.play().catch(() => {});
+              }, null, 3);
+            await tl;
+            
+            spark.className = 'animation-spark spark-number';
+            spark.textContent = value;
+            spark.style.left = `${outputX - 40}px`;
+            spark.style.top = `${outputY}px`;
+            spark.style.opacity = '1';
+            sounds.enter.play().catch(() => {});
+            
+            const trail2 = createDirectionalTrail(outputX, outputY, endX, endY, true);
+            await new Promise(resolve => {
+                gsap.to(spark, {
+                    left: endX - 40, top: endY, scale: 1, duration: 1, ease: "power2.out",
+                    onUpdate: () => {
+                        const rect = spark.getBoundingClientRect();
+                        updateTrailParticles(trail2, rect.left + rect.width / 2, rect.top + rect.height / 2, outputX, outputY);
+                    },
+                    onComplete: () => {
+                        spark.remove(); machine.remove(); removeTrail(trail2);
+                        gsap.to(box, {opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.7)", onComplete: resolve});
+                        
+                        const action = {type: 'memory', element: box, isNew: true};
+                        animationHistory.push(action);
+                        stepAnimations[currentStep].push(action);
+                    }
+                });
+            });
+        } else {
+            sounds.machineGear.currentTime = 0;
+            sounds.machineGear.play().catch(() => {});
+
+            const tl = gsap.timeline();
+            tl.to('.gear-1', {rotation: 45, duration: 0.15, yoyo: true, repeat: 19, ease: "power2.out", transformOrigin: "center"}, 0)
+              .to('.gear-2', {rotation: -45, duration: 0.15, yoyo: true, repeat: 19, ease: "power2.out", transformOrigin: "center"}, 0)
+              .to('.machine-body', {boxShadow: '0 0 50px rgba(239, 68, 68, 0.9)', x: '+=5', duration: 0.1, yoyo: true, repeat: 29}, 0.3)
+              .call(() => {
+                  sounds.inputFail.currentTime = 0;
+                  sounds.inputFail.play().catch(() => {});
+              }, null, 3);
+            await tl;
+            
+            await new Promise(resolve => {
+                gsap.to(spark, {
+                    left: intakeX - 150, top: intakeY - 80, rotation: 720, opacity: 0, duration: 0.8, ease: "power2.out",
+                    onComplete: () => { spark.remove(); machine.remove(); box.remove(); resolve(); }
+                });
+            });
+        }
+    }
+}
+
+// ============ PRINT ANIMATION (for non-if print statements) ============
+async function animatePrint(step, text) {
+    // Simple version - just spark from editor
+    const coords = editor.charCoords({line: step.lineNumber, ch: 0}, "page");
+    await animatePrintSpark(step.lineNumber, text);
+}
+
+// ============ SVG TRAIL SYSTEM ============
+function createDirectionalTrail(startX, startY, endX, endY, isGold) {
+    const svg = document.getElementById('trailSvg');
+    const particles = [];
+    const color = isGold ? '#ffd700' : '#4ade80';
+    for (let i = 0; i < 8; i++) {
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('r', 6 - i * 0.5);
+        circle.setAttribute('fill', color);
+        circle.setAttribute('opacity', 0.9 - i * 0.1);
+        circle.setAttribute('cx', startX);
+        circle.setAttribute('cy', startY);
+        svg.appendChild(circle);
+        particles.push({element: circle, index: i});
+    }
+    return particles;
+}
+
+function updateTrailParticles(particles, currentX, currentY, startX, startY) {
+    const angle = Math.atan2(currentY - startY, currentX - startX);
+    particles.forEach(({element, index}) => {
+        const offset = (index + 1) * 12;
+        element.setAttribute('cx', currentX - Math.cos(angle) * offset);
+        element.setAttribute('cy', currentY - Math.sin(angle) * offset);
+    });
+}
+
+function removeTrail(particles) {
+    particles.forEach(({element}) => element.remove());
+}
+
+// ============ SMART EXPLANATION ============
+async function showSmartExplanation(stepIndex) {
+    if (!preloadedExplanations[stepIndex]) {
+        showTeacher(`Step ${stepIndex + 1} executed successfully!`);
+        return;
+    }
+    
+    let explanation = preloadedExplanations[stepIndex].explanation;
+    const placeholders = preloadedExplanations[stepIndex].placeholders || [];
+    
+    placeholders.forEach(placeholder => {
+        if (placeholderValues[placeholder]) {
+            const regex = new RegExp(`\\{\\{${placeholder}\\}\\}`, 'g');
+            explanation = explanation.replace(regex, placeholderValues[placeholder]);
+        }
+    });
+    
+    Object.keys(currentVariables).forEach(varName => {
+        const regex = new RegExp(`\\{\\{${varName}\\}\\}`, 'g');
+        explanation = explanation.replace(regex, currentVariables[varName]);
+    });
+    
+    showTeacher(explanation);
+}
+
+// ============ ERROR HANDLING ============
+async function generateErrorExplanation(error, code, lineNumber) {
+    const output = document.getElementById('output');
+    output.innerHTML = `<span class="error">❌ ${error.message}</span>`;
+    showTeacher("❌ Error detected. Double-check your code!");
+}
+
+// ============ NAVIGATION ============
+document.getElementById('backBtn').onclick = () => {
+    if (currentStep > 0) {
+        currentStep--;
+        reverseLastAnimation();
+        updateStepIndicator();
+        updateButtons();
+        
+        if (currentStep > 0) {
+            showSmartExplanation(currentStep - 1);
+        } else {
+            showTeacher("Back to the start. Click 'Next Step' to begin again.");
+        }
+    }
+};
+
+function reverseLastAnimation() {
+    const lastStepAnimations = stepAnimations.pop();
+    if (!lastStepAnimations || lastStepAnimations.length === 0) return;
+    
+    lastStepAnimations.reverse().forEach(action => {
+        gsap.to(action.element, {
+            opacity: 0,
+            scale: action.type === 'memory' ? 0.5 : 1,
+            x: action.type === 'output' ? -20 : 0,
+            duration: 0.3,
+            onComplete: () => {
+                if (action.isNew) action.element.remove();
+            }
+        });
+        animationHistory.pop();
+    });
+}
+
+document.getElementById('resetBtn').onclick = () => location.reload();
+
+// ============ HELPERS ============
+function highlightLine(lineNum) {
+    if (currentLineMarker) currentLineMarker.clear();
+    currentLineMarker = editor.markText(
+        {line: lineNum, ch: 0},
+        {line: lineNum, ch: editor.getLine(lineNum).length},
+        {className: 'CodeMirror-activeline-background'}
+    );
+    editor.scrollIntoView({line: lineNum, ch: 0}, 50);
+}
+
+function showTeacher(message) {
+    const bubble = document.getElementById('teacherBubble');
+    const text = document.getElementById('teacherText');
+    text.textContent = message;
+    bubble.classList.add('show');
+    bubble.style.borderColor = '#bbf7d0';
+    bubble.style.backgroundColor = '#f0fdf4';
+    sounds.notification.currentTime = 0;
+    sounds.notification.play().catch(() => {});
+}
+
+function updateStepIndicator() {
+    document.getElementById('stepIndicator').textContent = 
+        isRunning ? `Step ${currentStep}/${totalSteps}` : 'Ready to run...';
+}
+
+function updateButtons() {
+    document.getElementById('backBtn').disabled = (currentStep === 0);
+    document.getElementById('stepBtn').disabled = (currentStep >= totalSteps);
+    
+    if (currentStep >= totalSteps) {
+        showTeacher("🎉 Excellent! You've learned if-statements! Try switching modes and run again.");
+        editor.setOption("readOnly", false);
+        document.getElementById('runBtn').disabled = false;
+        isRunning = false;
+    }
+}
+
+function updateEditorForMode() {
+    // Placeholder
+}

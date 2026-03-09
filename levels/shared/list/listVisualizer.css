@@ -1,0 +1,1045 @@
+/* ===================================
+   List Visualizer Styles
+   Phase 2 - Milestone 1
+   =================================== */
+
+/* ============ LIST CONTAINER ============ */
+.list-container {
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    border: 3px solid #4caf50;
+    border-radius: 12px;
+    padding: 0;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+    overflow: hidden;
+    width: 100%;
+    max-width: 450px;
+    transition: all 0.3s ease;
+
+    /* Milestone 2: Animation starting state */
+    opacity: 0;
+    transform: scale(0.9);
+}
+
+/* ============ HEADER SECTION ============ */
+.list-header {
+    background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+    color: white;
+    padding: 12px 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-weight: bold;
+    min-height: 50px;
+}
+
+.list-header.compact {
+    justify-content: center;
+}
+
+.list-name-section {
+    flex: 1;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.list-main-name {
+    font-family: 'Courier New', monospace;
+    font-size: 18px;
+}
+
+.list-alias-indicator {
+    font-size: 13px;
+    opacity: 0.9;
+    font-style: italic;
+    font-family: sans-serif;
+}
+
+.compact-info {
+    font-size: 14px;
+    opacity: 0.95;
+    font-family: sans-serif;
+    margin-left: 8px;
+}
+
+.list-count-section {
+    font-size: 14px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px 12px;
+    border-radius: 6px;
+}
+
+.list-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.list-index-toggle,
+.list-minimize-btn {
+    background: white;
+    color: #388e3c;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.list-index-toggle:hover,
+.list-minimize-btn:hover {
+    background: #e8f5e9;
+    transform: scale(1.1);
+}
+
+.list-index-toggle:active,
+.list-minimize-btn:active {
+    transform: scale(0.95);
+}
+
+/* ============ TABLE WRAPPER ============ */
+.list-table-wrapper {
+    background: white;
+    overflow: auto;
+    max-height: 400px;
+    border-top: 2px solid #4caf50;
+
+    /* Milestone 2: Animation starting state */
+    opacity: 0;
+}
+
+/* Scrollbar styling */
+.list-table-wrapper::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.list-table-wrapper::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.list-table-wrapper::-webkit-scrollbar-thumb {
+    background: #4caf50;
+    border-radius: 4px;
+}
+
+.list-table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #388e3c;
+}
+
+/* ============ TABLE STRUCTURE ============ */
+.list-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Courier New', monospace;
+}
+
+.list-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #388e3c;
+}
+
+.list-table th {
+    padding: 10px;
+    text-align: left;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+    border-bottom: 2px solid #2e7d32;
+}
+
+.list-header-index {
+    width: 80px;
+    text-align: center !important;
+    background: #2e7d32;
+}
+
+.list-header-content {
+    background: #388e3c;
+}
+
+/* ============ TABLE ROWS ============ */
+.list-table tbody tr {
+    transition: background 0.2s ease;
+
+    /* Milestone 2: Animation starting state */
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+}
+
+.list-table tbody tr:nth-child(odd) {
+    background: #f1f8f4;
+}
+
+.list-table tbody tr:nth-child(even) {
+    background: white;
+}
+
+.list-table tbody tr:hover {
+    background: #e8f5e9;
+    cursor: pointer;
+}
+
+.list-index-cell,
+.list-content-cell {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+    font-size: 15px;
+}
+
+.list-index-cell {
+    text-align: center;
+    font-weight: bold;
+    color: #2e7d32;
+    background: rgba(46, 125, 50, 0.05);
+    width: 80px;
+}
+
+.list-content-cell {
+    color: #1b5e20;
+    word-break: break-word;
+}
+
+.list-value {
+    font-family: 'Courier New', monospace;
+    font-size: 16px;
+}
+
+/* ============ ROW HIGHLIGHT EFFECTS ============ */
+.list-row.highlight {
+    background: #fff9c4 !important;
+    animation: rowPulse 0.5s ease-in-out;
+}
+
+@keyframes rowPulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.02);
+    }
+}
+
+/* ============ EMPTY LIST STATE ============ */
+.list-table-body:empty::after {
+    content: 'Empty list';
+    display: block;
+    text-align: center;
+    padding: 30px;
+    color: #999;
+    font-style: italic;
+}
+
+/* ============ COMPACT VIEW ============ */
+.list-container[data-is-expanded="false"] {
+    max-width: 250px;
+    padding: 0;
+}
+
+.list-container[data-is-expanded="false"] .list-header {
+    border-radius: 12px;
+    min-height: 70px;
+}
+
+.list-container[data-is-expanded="false"] .list-controls {
+    position: absolute;
+    right: 15px;
+}
+
+/* ============ RESPONSIVE DESIGN ============ */
+@media (max-width: 768px) {
+    .list-container {
+        max-width: 100%;
+    }
+
+    .list-name-section {
+        font-size: 14px;
+    }
+
+    .list-main-name {
+        font-size: 16px;
+    }
+
+    .list-count-section {
+        font-size: 12px;
+    }
+
+    .list-index-cell,
+    .list-content-cell {
+        padding: 8px;
+        font-size: 13px;
+    }
+}
+
+/* ============ ANIMATION CLASSES (For Future Milestones) ============ */
+.list-row-entering {
+    opacity: 0;
+    transform: translateX(-20px);
+}
+
+.list-row-exiting {
+    opacity: 0;
+    transform: translateX(20px);
+}
+
+.list-index-wipe {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+/* ===================================
+   M6A & M6C - CSS ADDITIONS
+   Add these to listVisualizer.css
+   =================================== */
+
+/* ============ M6A: CONTENT OVERLAY ============ */
+.content-overlay {
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    border: 3px solid #4caf50;
+    border-radius: 8px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    opacity: 0;
+    box-shadow: 0 4px 20px rgba(76, 175, 80, 0.5);
+    pointer-events: none;
+    transition: flex-direction 0.3s ease;
+}
+
+.overlay-item {
+    font-family: 'Courier New', monospace;
+    font-size: 15px;
+    color: #1b5e20;
+    padding: 6px 10px;
+    background: white;
+    border-radius: 4px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* Morphing state: vertical → horizontal */
+.content-overlay.morphing {
+    flex-direction: row;
+    gap: 8px;
+    padding: 6px 12px;
+}
+
+.content-overlay.morphing .overlay-item {
+    padding: 4px 8px;
+    font-size: 14px;
+}
+
+/* ============ M6C: ERROR ANIMATIONS ============ */
+
+/* Error spark element */
+.error-spark {
+    animation: errorPulse 0.5s ease-in-out infinite;
+}
+
+@keyframes errorPulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 20px rgba(255, 82, 82, 0.9);
+        transform: scale(1);
+    }
+
+    50% {
+        box-shadow: 0 0 30px rgba(255, 82, 82, 1);
+        transform: scale(1.05);
+    }
+}
+
+/* Error output line styling */
+.output-line.error {
+    color: #ff5252 !important;
+    font-weight: bold;
+    background: rgba(255, 82, 82, 0.1);
+    padding: 4px 8px;
+    border-left: 4px solid #ff5252;
+    margin: 4px 0;
+}
+
+/* Red blink state for rows (M6C Step 2) */
+.list-row.error-blink {
+    background: #ff5252 !important;
+    transition: background 0.1s ease;
+}
+
+/* Shake animation helper class */
+.list-container.shaking {
+    animation: shake 0.4s ease-in-out;
+}
+
+@keyframes shake {
+
+    0%,
+    100% {
+        transform: translateX(0) translateY(0);
+    }
+
+    10%,
+    30%,
+    50%,
+    70%,
+    90% {
+        transform: translateX(-10px) translateY(2px);
+    }
+
+    20%,
+    40%,
+    60%,
+    80% {
+        transform: translateX(10px) translateY(-2px);
+    }
+}
+
+/* Red sparkle particles for error trail */
+.sparkle-particle.error {
+    background-color: #ff5252 !important;
+    box-shadow: 0 0 10px #ff5252 !important;
+}
+
+/* Flying element (used in M6B, also applicable here) */
+.flying-element {
+    transition: all 0.3s ease;
+}
+
+/* ============ RESPONSIVE ADJUSTMENTS ============ */
+@media (max-width: 768px) {
+    .content-overlay {
+        max-width: 90vw;
+    }
+
+    .overlay-item {
+        font-size: 13px;
+        padding: 4px 8px;
+    }
+
+    .error-spark {
+        font-size: 12px;
+        max-width: 85vw;
+        padding: 6px 12px;
+    }
+}
+
+/* ===================================
+   M8 - Shallow Copy Styles
+   Add to listVisualizer.css
+   =================================== */
+
+/* ============ ALIAS INDICATORS ============ */
+
+/* Arrow indicating shared reference */
+.list-alias-arrow {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 16px;
+    margin-left: 5px;
+    font-weight: bold;
+}
+
+/* "+N more" badge for compact mode */
+.list-alias-more {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-left: 8px;
+    cursor: help;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.list-alias-more:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+}
+
+/* Info icon in badge */
+.list-alias-info {
+    font-size: 14px;
+    opacity: 0.9;
+}
+
+/* Animation class for new alias */
+.alias-new {
+    animation: aliasAppear 0.4s ease-out;
+}
+
+@keyframes aliasAppear {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* ============ ALIAS TOOLTIP ============ */
+
+.alias-tooltip {
+    position: fixed;
+    background: linear-gradient(135deg, #2c2c2c 0%, #1a1a1a 100%);
+    color: white;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 2px solid #4caf50;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    z-index: 10001;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    max-width: 300px;
+}
+
+.alias-tooltip strong {
+    color: #4caf50;
+    display: block;
+    margin-bottom: 6px;
+}
+
+/* ============ HEADER GLOW ANIMATION (M8) ============ */
+
+.list-header.alias-connecting {
+    animation: connectionGlow 0.8s ease-in-out;
+}
+
+@keyframes connectionGlow {
+
+    0%,
+    100% {
+        box-shadow: none;
+    }
+
+    50% {
+        box-shadow: 0 0 25px rgba(255, 193, 7, 0.9);
+    }
+}
+
+/* ============ MULTI-ALIAS LAYOUT ADJUSTMENTS ============ */
+
+/* Inline mode (2-3 aliases) */
+.list-name-section .list-main-name {
+    max-width: 350px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Compact mode (4+ aliases) */
+.list-name-section:has(.list-alias-more) .list-main-name {
+    max-width: 120px;
+}
+
+/* ============ RESPONSIVE ADJUSTMENTS ============ */
+
+@media (max-width: 768px) {
+    .list-alias-more {
+        font-size: 11px;
+        padding: 2px 6px;
+    }
+
+    .list-name-section .list-main-name {
+        max-width: 200px;
+        font-size: 16px;
+    }
+
+    .alias-tooltip {
+        font-size: 12px;
+        padding: 10px 12px;
+    }
+}
+
+/* ============ TEACHER BUBBLE ENHANCEMENT ============ */
+
+.teacher-bubble.show {
+    animation: slideIn 0.5s ease;
+}
+
+.teacher-bubble strong {
+    color: #2e7d32;
+    font-weight: 700;
+}
+
+/* ============ len() COUNTER DIV ============ */
+
+
+
+
+
+.len-label {
+
+    font-size: 14px;
+
+    font-weight: bold;
+
+    color: #78350f;
+
+}
+
+
+
+.len-value {
+
+    font-size: 24px;
+
+    font-weight: bold;
+
+    color: #ffffff;
+
+}
+
+
+
+/* Sparkle particles (if not already present) */
+
+.sparkle-particle {
+
+    position: fixed;
+
+    width: 8px;
+
+    height: 8px;
+
+    border-radius: 50%;
+
+    pointer-events: none;
+
+    z-index: 9999;
+
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   index() & count() PILL SAFETY OVERRIDES
+   Prevents CSS conflicts with GSAP animations
+   ═══════════════════════════════════════════════════════════════════ */
+
+.index-search-div,
+.count-counter-div {
+    /* Remove any size constraints that might conflict with GSAP */
+    min-height: unset !important;
+    max-height: unset !important;
+    min-width: unset !important;
+    max-width: unset !important;
+}
+
+/* Clean text display for value-only mode */
+.index-value-only,
+.count-value-only {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* ===================================
+   REVERSE ANIMATION STYLES
+   =================================== */
+
+/* Rewind icon container */
+.reverse-rewind-icon {
+    position: absolute;
+    top: -45px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 40px;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.reverse-rewind-icon img {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.8));
+}
+
+/* Grey dimming overlay for table during animation */
+.list-table-wrapper.reverse-animating {
+    position: relative;
+}
+
+.list-table-wrapper.reverse-animating::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(200, 200, 200, 0.5);
+    z-index: 5;
+    pointer-events: none;
+}
+
+/* Preserve content colors but dim them */
+.list-table-wrapper.reverse-animating .list-content-cell {
+    filter: grayscale(0.3) brightness(0.9);
+}
+
+/* Index cells stay visible but dimmed */
+.list-table-wrapper.reverse-animating .list-index-cell {
+    filter: brightness(0.85);
+}
+
+/* Highlight effect for content cells */
+.list-content-cell.reverse-highlight {
+    background: #fff9c4 !important;
+    box-shadow: 0 0 12px rgba(255, 235, 59, 0.8);
+    transform: scale(1.05);
+    z-index: 10;
+    position: relative;
+}
+
+/* Temporary lane styling (right side) */
+.reverse-temp-lane {
+    position: absolute;
+    right: -150px;
+    top: 0;
+    width: 120px;
+    background: rgba(102, 126, 234, 0.1);
+    border: 2px dashed #667eea;
+    border-radius: 8px;
+    pointer-events: none;
+}
+
+/* Flying content element during circular movement */
+.reverse-flying-content {
+    position: fixed;
+    padding: 12px;
+    background: white;
+    border: 2px solid #667eea;
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 15px;
+    color: #1b5e20;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    z-index: 1000;
+    pointer-events: none;
+}
+
+/* Error shake animation for reverse */
+.error-shake {
+    animation: shake 0.4s ease-in-out;
+}
+
+/* ===================================
+   IMPROVED APPEND ANIMATION - PINK THEME
+   =================================== */
+
+/* Flying pink div from code position */
+.append-flying-value {
+    position: fixed;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+    color: white;
+    border: 3px solid #be185d;
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 16px;
+    font-weight: bold;
+    box-shadow: 0 0 20px rgba(236, 72, 153, 0.8);
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+}
+
+/* Pink sparkle particles for trail */
+.append-sparkle {
+    position: fixed;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ec4899;
+    box-shadow: 0 0 10px #ec4899;
+    pointer-events: none;
+    z-index: 9999;
+}
+
+/* Pink SVG trail path */
+.append-trail-svg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 9998;
+}
+
+.append-trail-svg path {
+    stroke: #ec4899;
+    stroke-width: 3;
+    fill: none;
+    opacity: 0.8;
+}
+
+/* ===================================
+   INSERT ANIMATION STYLES
+   =================================== */
+
+/* Insert search counter (like len but shows "Find i") */
+.insert-search-div {
+    position: fixed;
+    width: 140px;
+    height: 90px;
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    border: 3px solid #6d28d9;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    z-index: 10000;
+    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.6);
+    font-family: 'Courier New', monospace;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.insert-search-label {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.insert-search-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+/* Grey-out rows above insertion point */
+.list-row.insert-locked {
+    opacity: 0.4;
+    filter: grayscale(0.6);
+    pointer-events: none;
+}
+
+/* Highlight target row during search */
+.list-row.insert-searching {
+    background: #ddd6fe !important;
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.5);
+    animation: searchPulse 0.3s ease-in-out;
+}
+
+@keyframes searchPulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.02);
+    }
+}
+
+/* Row shift animation classes */
+.list-row.insert-shifting {
+    transition: transform 0.8s ease-in-out;
+}
+
+/* Gap visualization */
+.insert-gap-row {
+    background: white !important;
+    border: 2px dashed #8b5cf6;
+    min-height: 50px;
+}
+
+.insert-gap-row td {
+    border: none;
+    background: transparent;
+}
+
+/* ===================================
+   APPEND & INSERT ANIMATION STYLES
+   Add to listVisualizer.css
+   =================================== */
+
+/* ===================================
+   IMPROVED APPEND ANIMATION - PINK THEME
+   =================================== */
+
+/* Flying pink div from code position */
+.append-flying-value {
+    position: fixed;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+    color: white;
+    border: 3px solid #be185d;
+    border-radius: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 16px;
+    font-weight: bold;
+    box-shadow: 0 0 20px rgba(236, 72, 153, 0.8);
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+}
+
+/* Pink sparkle particles for trail */
+.append-sparkle {
+    position: fixed;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ec4899;
+    box-shadow: 0 0 10px #ec4899;
+    pointer-events: none;
+    z-index: 9999;
+}
+
+/* Pink SVG trail path */
+.append-trail-svg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 9998;
+}
+
+.append-trail-svg path {
+    stroke: #ec4899;
+    stroke-width: 3;
+    fill: none;
+    opacity: 0.8;
+}
+
+/* ===================================
+   INSERT ANIMATION STYLES
+   =================================== */
+
+/* Insert search counter (like len but shows "Find i") */
+.insert-search-div {
+    position: fixed;
+    width: 140px;
+    height: 90px;
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    border: 3px solid #6d28d9;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    z-index: 10000;
+    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.6);
+    font-family: 'Courier New', monospace;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.insert-search-label {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.insert-search-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+/* Grey-out rows above insertion point */
+.list-row.insert-locked {
+    opacity: 0.4;
+    filter: grayscale(0.6);
+    pointer-events: none;
+}
+
+/* Highlight target row during search */
+.list-row.insert-searching {
+    background: #ddd6fe !important;
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.5);
+    animation: searchPulse 0.3s ease-in-out;
+}
+
+@keyframes searchPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+
+/* Row shift animation classes */
+.list-row.insert-shifting {
+    transition: transform 0.8s ease-in-out;
+}
+
+/* Gap visualization */
+.insert-gap-row {
+    background: white !important;
+    border: 2px dashed #8b5cf6;
+    min-height: 50px;
+}
+
+.insert-gap-row td {
+    border: none;
+    background: transparent;
+}
+
+/* ===================================
+   RESPONSIVE DESIGN
+   =================================== */
+
+@media (max-width: 768px) {
+    .append-flying-value {
+        font-size: 14px;
+        padding: 10px 16px;
+    }
+    
+    .insert-search-div {
+        width: 120px;
+        height: 80px;
+    }
+    
+    .insert-search-label {
+        font-size: 12px;
+    }
+    
+    .insert-search-value {
+        font-size: 24px;
+    }
+}
+
+/* ===================================
+   Clear Animation Message
+   =================================== */
+.clear-completion-message {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #10b981;
+    pointer-events: none;
+    padding: 8px 0;
+    width: 100%;
+    white-space: nowrap;
+}

@@ -1,3 +1,4 @@
+
 /* ===================================
    Level 5: Add 3+4 (String vs Int)
    MACHINE ANIMATION VERSION
@@ -34,6 +35,11 @@ body {
     align-items: center;
     justify-content: space-between;
     box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    position: relative;  /* ADD THIS */
+    z-index: 10000;      /* ADD THIS */
+}
+#blackingPopup {
+    z-index: 10001 !important;
 }
 
 .navbar h1 {
@@ -553,237 +559,314 @@ button:disabled {
 }
 
 /* ===================================
-   Level 6: If Statements - CSS FIXES
-   Add this to your lvl6styles.css
+   Level 6: If Statements - NEW STYLES
+   Part 2: Brain Mode + Tree Styles
+   ADD THIS TO END OF lvl5styles.css
    =================================== */
 
-/* FIXED: Fully black mask (opacity 1.0, not 0.85) */
-#brainMask {
+
+
+/* ============ BRAIN BUBBLE ============ */
+#brainBubble {
     position: fixed;
-    top: 60px;  /* Below navbar */
-    left: 0;
-    width: 100%;
-    height: calc(100% - 60px);
-    background: rgba(0, 0, 0, 1);  /* CHANGED from 0.85 to 1.0 */
-    z-index: 9000;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.8s ease;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    border: 3px solid #8b5cf6;
+    border-radius: 12px;
+    padding: 15px 25px;
+    max-width: 600px;
+    max-height: 150px;
+    overflow-y: auto;
+    z-index: 9002;
+    font-size: 14px;
+    color: #1e293b;
+    box-shadow: 0 4px 20px rgba(139, 92, 246, 0.5);
 }
 
-/* Brain Mode Tree Container */
+#brainBubble .bubble-message {
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+/* ============ PROGRESS INDICATOR ============ */
+#progressIndicator {
+    position: fixed;
+    top: 250px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1a1a;
+    border: 2px solid #f97316;
+    border-radius: 8px;
+    padding: 10px 20px;
+    z-index: 9002;
+    color: #f97316;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+/* ============ IF TREE CONTAINER ============ */
 #ifTree {
     position: fixed;
-    top: 150px;
-    left: 50px;
-    width: 800px;
-    height: 500px;
+    top: 50%;
+    left: 20%;
+    transform: translateY(-50%);
     z-index: 9001;
-    pointer-events: auto;
+    width: 60%;
+    height: 60%;
 }
 
-/* Brain Node */
+/* ============ BRAIN NODE ============ */
 #brainNode {
     position: absolute;
-    left: 50px;
-    top: 200px;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
     width: 100px;
     height: 100px;
-    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
     border-radius: 50%;
+    border: 4px solid #fff;
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.8);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 3rem;
-    box-shadow: 0 0 40px rgba(139, 92, 246, 0.8);
-    z-index: 9001;
 }
 
-/* Condition Nodes */
+/* ============ CONDITION NODES ============ */
 .condition-node {
     position: absolute;
-    width: 200px;
-    min-height: 80px;
-    padding: 15px;
+    min-width: 200px;
+    padding: 20px;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2c2c2c 100%);
+    border: 3px solid #6b7280;
     border-radius: 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    transition: all 0.3s ease;
-}
-
-.node-grey {
-    background: linear-gradient(135deg, #6b7280, #4b5563);
-    border: 2px solid #9ca3af;
-}
-
-.node-orange {
-    background: linear-gradient(135deg, #f97316, #ea580c);
-    border: 2px solid #fb923c;
-}
-
-.node-green {
-    background: linear-gradient(135deg, #10b981, #059669);
-    border: 2px solid #34d399;
-}
-
-.node-red {
-    background: linear-gradient(135deg, #ef4444, #dc2626);
-    border: 2px solid #f87171;
+    text-align: center;
+    color: white;
+    font-family: 'Courier New', monospace;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    transition: all 0.3s;
 }
 
 .condition-text {
-    color: white;
-    font-family: 'Courier New', monospace;
-    font-size: 16px;
-    font-weight: bold;
-    text-align: center;
+    font-size: 1rem;
+    margin-bottom: 10px;
+    color: #fff;
 }
 
-/* Tree Edges */
+/* ============ NODE STATES ============ */
+.node-grey {
+    border-color: #6b7280 !important;
+    box-shadow: 0 4px 20px rgba(107, 114, 128, 0.3) !important;
+}
+
+.node-orange {
+    border-color: #f97316 !important;
+    box-shadow: 0 0 30px rgba(249, 115, 22, 0.8) !important;
+    animation: pulse-orange 1.5s infinite;
+}
+
+.node-green {
+    border-color: #10b981 !important;
+    box-shadow: 0 0 40px rgba(16, 185, 129, 0.9) !important;
+    animation: pulse-green 1.5s infinite;
+}
+
+.node-red {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 30px rgba(239, 68, 68, 0.8) !important;
+}
+
+@keyframes pulse-orange {
+    0%, 100% { box-shadow: 0 0 30px rgba(249, 115, 22, 0.8); }
+    50% { box-shadow: 0 0 50px rgba(249, 115, 22, 1); }
+}
+
+@keyframes pulse-green {
+    0%, 100% { box-shadow: 0 0 40px rgba(16, 185, 129, 0.9); }
+    50% { box-shadow: 0 0 60px rgba(16, 185, 129, 1); }
+}
+
+/* ============ TRUE/FALSE BUTTONS ============ */
+.truth-button {
+    background: #10b981;
+    color: white;
+    border: none;
+    padding: 15px 40px;
+    border-radius: 10px;
+    font-size: 1.3rem;
+    font-weight: bold;
+    cursor: pointer;
+    animation: heartbeat 1.5s infinite;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.5);
+    transition: all 0.3s;
+    font-family: 'Courier New', monospace;
+}
+
+.truth-button:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 25px rgba(16, 185, 129, 0.7);
+}
+
+.truth-button.false {
+    background: #ef4444;
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.5);
+}
+
+.truth-button.false:hover {
+    box-shadow: 0 6px 25px rgba(239, 68, 68, 0.7);
+}
+
+@keyframes heartbeat {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+/* ============ EDGE SVG LINES ============ */
 .tree-edge {
     position: absolute;
-    width: 300px;
-    height: 300px;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     pointer-events: none;
     z-index: 9000;
 }
 
 .edge-line {
-    stroke-width: 3;
-    transition: stroke 0.3s ease;
+    stroke-width: 4;
+    fill: none;
+    transition: stroke 0.3s;
 }
 
-.edge-grey {
-    stroke: #6b7280;
-}
+.edge-grey { stroke: #6b7280; }
+.edge-orange { stroke: #f97316; }
+.edge-green { stroke: #10b981; }
+.edge-red { stroke: #ef4444; }
 
-.edge-orange {
-    stroke: #f97316;
-}
-
-.edge-green {
-    stroke: #10b981;
-}
-
-.edge-red {
-    stroke: #ef4444;
-}
-
-/* Truth Buttons */
-.truth-button {
-    padding: 12px 24px;
-    font-size: 18px;
-    font-weight: bold;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'Courier New', monospace;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.truth-button:not(.false) {
-    background: linear-gradient(135deg, #10b981, #059669);
-    color: white;
-}
-
-.truth-button.false {
-    background: linear-gradient(135deg, #ef4444, #dc2626);
-    color: white;
-}
-
-.truth-button:hover {
-    transform: scale(1.05);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-}
-
-/* Electricity Particle */
+/* ============ ELECTRICITY PARTICLE ============ */
 .electricity-particle {
     position: absolute;
-    width: 20px;
-    height: 20px;
-    background: radial-gradient(circle, #fbbf24, #f59e0b);
+    width: 12px;
+    height: 12px;
+    background: #3b82f6;
     border-radius: 50%;
-    box-shadow: 0 0 20px rgba(251, 191, 36, 0.8);
-    z-index: 9001;
-}
-
-/* Dissolve Particles */
-.dissolve-particle {
-    position: fixed;
-    width: 8px;
-    height: 8px;
-    background: #9ca3af;
-    border-radius: 50%;
-    z-index: 9001;
+    box-shadow: 0 0 25px #3b82f6, 0 0 50px #3b82f6;
     pointer-events: none;
+    z-index: 9001;
 }
 
-/* Chosen Block Code Display */
+/* ============ CHOSEN BLOCK CODE DISPLAY ============ */
 .chosen-block-code {
     position: absolute;
-    padding: 15px 20px;
-    background: rgba(16, 185, 129, 0.2);
-    border: 2px solid #10b981;
-    border-radius: 8px;
-    color: #d1fae5;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    white-space: pre;
-    box-shadow: 0 0 30px rgba(16, 185, 129, 0.5);
-    z-index: 9001;
-}
-
-/* Brain Bubble */
-#brainBubble {
-    position: fixed;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
-    max-width: 600px;
-    max-height: 200px;
-    padding: 20px;
-    background: linear-gradient(135deg, #1f2937, #111827);
-    border: 2px solid #8b5cf6;
-    border-radius: 16px;
-    color: #e5e7eb;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    box-shadow: 0 8px 30px rgba(139, 92, 246, 0.5);
-    z-index: 9002;
-    overflow-y: auto;
-}
-
-.bubble-message {
-    margin-bottom: 10px;
-    line-height: 1.5;
-}
-
-.bubble-message:last-child {
-    margin-bottom: 0;
-}
-
-/* Progress Indicator */
-#progressIndicator {
-    position: fixed;
-    top: 100px;
-    right: 50px;
-    padding: 15px 25px;
-    background: rgba(139, 92, 246, 0.9);
-    border: 2px solid #a78bfa;
+    background: #1a1a1a;
+    border: 3px solid #10b981;
     border-radius: 12px;
-    color: white;
+    padding: 20px;
+    color: #10b981;
     font-family: 'Courier New', monospace;
-    font-size: 16px;
-    font-weight: bold;
-    box-shadow: 0 4px 20px rgba(139, 92, 246, 0.5);
-    z-index: 9002;
+    font-size: 1rem;
+    white-space: pre;
+    max-width: 300px;
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
 }
 
-/* Ensure navbar stays on top */
-.navbar {
-    z-index: 10000 !important;
+/* ============ DISSOLVE PARTICLES ============ */
+.dissolve-particle {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: #6b7280;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0.8;
 }
+
+/* ===================================
+   THOUGHT BOX NEAR BRAIN - ADD TO END OF CSS
+   =================================== */
+
+/* ============ BRAIN THOUGHT BOX ============ */
+#brainThoughtBox {
+    /* Position near brain */
+    position: fixed;
+    left: 250px;
+    top: 50%;
+    transform: translateY(-50%);
+    
+    /* Size */
+    width: 350px;
+    min-height: 150px;
+    padding: 20px 25px;
+    
+    /* Colors - BLACK background, YELLOW border */
+    background: #000000;
+    border: 3px solid #fbbf24;
+    border-radius: 16px;
+    
+    /* Glow effect */
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
+    
+    /* Z-index */
+    z-index: 10002;
+    
+    /* Text styling */
+    color: white;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    
+    /* Initial state */
+    opacity: 0;
+}
+
+/* Content inside thought box */
+#brainThoughtContent {
+    color: white;
+}
+
+#brainThoughtContent p {
+    margin: 8px 0;
+}
+
+#brainThoughtContent strong {
+    font-weight: 700;
+    color: #fbbf24;
+}
+
+#brainThoughtContent em {
+    font-style: italic;
+    color: #fcd34d;
+}
+
+/* ============ CONTINUE THINKING BUTTON ============ */
+.btn-continue-thinking {
+    background: #8b5cf6;
+    color: white;
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn-continue-thinking:hover:not(:disabled) {
+    background: #7c3aed;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+}
+
+.btn-continue-thinking:disabled {
+    background: #cbd5e1;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ============ PULSING ANIMATION ============ */
+/* This is handled by GSAP in JavaScript for smooth control */
