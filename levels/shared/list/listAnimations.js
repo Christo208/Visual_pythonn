@@ -13,7 +13,7 @@ let pencilWriteSound = null;
  * Initialize sound effects (call after DOM loads)
  */
 export function initializeListSounds() {
-    pencilWriteSound = new Audio('../sounds/pencil-write.wav');
+    pencilWriteSound = new Audio(new URL('../../sounds/pencil-write.wav', import.meta.url).href);
     pencilWriteSound.volume = 0.3;
     console.log('🔊 List sound effects initialized');
 }
@@ -701,11 +701,11 @@ export function animatePrintElement(listContainer, index, outputPanel, value, on
     
     // Play whoosh sound
     timeline.call(() => {
-        const whooshSound = new Audio('../sounds/whoosh.wav');
+        const whooshSound = new Audio(new URL('../../sounds/whoosh.wav', import.meta.url).href);
         whooshSound.volume = 0.5;
         whooshSound.play().catch(e => console.warn('Whoosh sound failed:', e));
     });
-    
+
     // Calculate target position - find the last output line (the one we just created)
     const outputLines = outputPanel.querySelectorAll('.output-line');
     const targetLine = outputLines[outputLines.length - 1]; // Get the last line
@@ -794,7 +794,7 @@ export function animatePrintEntireList(listContainer, items, outputPanel, onComp
     
     // Play whoosh sound
     timeline.call(() => {
-        const whooshSound = new Audio('../sounds/whoosh.wav');
+        const whooshSound = new Audio(new URL('../../sounds/whoosh.wav', import.meta.url).href);
         whooshSound.volume = 0.5;
         whooshSound.play().catch(e => console.warn('Whoosh sound failed:', e));
     }, null, 0.3);

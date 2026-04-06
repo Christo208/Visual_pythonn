@@ -38,12 +38,18 @@ setInterval(() => {
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(__dirname)); // Added to serve your HTML/CSS/JS files
 
-// --- ROOT ROUTE ---
-// Added to serve index.html when visiting http://localhost:3000/
+// --- ROOT ROUTE (PRIORITY) ---
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(__dirname, 'indexcontrol.html'));
+});
+
+// Serve static files (but keep / mapped to indexcontrol.html even if index.html exists)
+app.use(express.static(__dirname, { index: false }));
+
+// Quick sanity endpoint to confirm the server is reachable
+app.get('/health', (req, res) => {
+    res.json({ ok: true });
 });
 
 // --- MAIN PAGE ENDPOINT ---
@@ -182,14 +188,33 @@ app.post('/generate-tutorial-explanation', async (req, res) => {
 // --- NEW SMART ENDPOINT WITH PLACEHOLDERS ---
 app.post('/generate-smart-tutorial-explanation', async (req, res) => {
     try {
-        const { fullCode, mode } = req.body;
+        const { fullCode, mode, lineItems: clientLineItems } = req.body;
         
-        if (!fullCode) {
-            return res.status(400).json({ error: 'Missing fullCode in request body.' });
+        if (!fullCode && !Array.isArray(clientLineItems)) {
+            return res.status(400).json({ error: 'Missing fullCode (or lineItems) in request body.' });
+        }
+
+        // Build a stable list of non-empty, non-comment lines with ORIGINAL editor line numbers (1-indexed).
+        // This is required so the frontend can sync AI explanations by lineNumber reliably.
+        let lineItems = [];
+        if (Array.isArray(clientLineItems) && clientLineItems.length > 0) {
+            lineItems = clientLineItems
+                .filter(item => item && typeof item.code === 'string')
+                .map(item => ({ lineNumber: Number(item.lineNumber), code: item.code }))
+                .filter(item => Number.isFinite(item.lineNumber) && item.lineNumber > 0 && item.code.trim() && !item.code.trim().startsWith('#'));
+        } else {
+            const rawLines = String(fullCode || '').split('\n');
+            lineItems = rawLines
+                .map((code, idx) => ({ lineNumber: idx + 1, code }))
+                .filter(item => item.code.trim() && !item.code.trim().startsWith('#'));
+        }
+
+        if (lineItems.length === 0) {
+            return res.status(400).json({ error: 'No executable lines found (blank/comment-only code).' });
         }
 
         // Check cache first
-        const cacheKey = `${fullCode}|${mode}`;
+        const cacheKey = `${fullCode || lineItems.map(x => x.code).join('\n')}|${mode}`;
         const cached = explanationCache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
             console.log('✅ Smart cache hit! (saving API call)');
@@ -197,17 +222,17 @@ app.post('/generate-smart-tutorial-explanation', async (req, res) => {
         }
 
         // Build smart prompt
-        const lines = fullCode.split('\n').filter(l => l.trim());
+        const codeForPrompt = lineItems.map(x => x.code).join('\n');
         const prompt = `You are generating step-by-step explanations for a Python learning platform for 10-year-olds.
 
 Code to analyze:
 \`\`\`python
-${fullCode}
+${codeForPrompt}
 \`\`\`
 
 Mode: ${mode === 'solution' ? 'SOLUTION (using int() for number conversion)' : 'PROBLEM (string concatenation)'}
 
-Generate a JSON array with ONE explanation per line of code.
+Generate a JSON object with ONE explanation per line of code (inside an "explanations" array).
 
 CRITICAL RULES:
 1. Use {{PLACEHOLDERS}} for unknown runtime values:
@@ -254,7 +279,7 @@ Output format (STRICT JSON):
 CRITICAL: Return ONLY valid JSON, no markdown code blocks, no preamble text.`;
 
         console.log('📡 Calling Gemini API for SMART tutorial explanations...');
-        console.log(`📊 Generating ${lines.length} contextual explanations in 1 API call`);
+        console.log(`📊 Generating ${lineItems.length} contextual explanations in 1 API call`);
 
         const response = await fetch(GEMINI_API_URL, {
             method: 'POST',
@@ -280,48 +305,80 @@ CRITICAL: Return ONLY valid JSON, no markdown code blocks, no preamble text.`;
         const data = JSON.parse(responseText);
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
         
+        // *** DEBUG LOGGING ***
+        console.log('\n========== AI RESPONSE DEBUG ==========');
+        console.log('📡 Full Gemini Response:', JSON.stringify(data, null, 2));
+        console.log('\n🔍 Extracted rawText (before cleanup):\n', rawText);
+        
         // Parse JSON response
         let explanations;
         try {
             // Remove markdown code blocks if present
             const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
+            console.log('\n✨ cleanText (after markdown removal):\n', cleanText);
+            
             const parsed = JSON.parse(cleanText);
-            explanations = parsed.explanations || [];
+            console.log('\n✅ Parsed JSON:', JSON.stringify(parsed, null, 2));
+            
+            // Gemini sometimes returns the array directly (instead of { explanations: [...] })
+            if (Array.isArray(parsed)) {
+                explanations = parsed;
+            } else if (parsed && Array.isArray(parsed.explanations)) {
+                explanations = parsed.explanations;
+            } else {
+                explanations = [];
+            }
+            console.log(`📊 Extracted ${explanations.length} explanations from AI response`);
+            console.log('Explanations array:', JSON.stringify(explanations, null, 2));
             
             // Ensure we have enough explanations
-            while (explanations.length < lines.length) {
+            while (explanations.length < lineItems.length) {
                 const idx = explanations.length;
                 explanations.push({
                     step: idx,
-                    line: lines[idx],
-                    explanation: `Line ${idx + 1}: ${lines[idx]} executed successfully!`,
+                    lineNumber: lineItems[idx].lineNumber,
+                    line: lineItems[idx].code,
+                    explanation: `Line ${lineItems[idx].lineNumber}: ${lineItems[idx].code} executed successfully!`,
                     placeholders: [],
                     type: 'assignment'
                 });
             }
             
             // Trim if we got too many
-            explanations = explanations.slice(0, lines.length);
+            explanations = explanations.slice(0, lineItems.length);
+
+            // Enrich with ORIGINAL editor line numbers so the frontend can sync by lineNumber reliably
+            explanations = explanations.map((e, idx) => ({
+                step: Number.isFinite(e?.step) ? e.step : idx,
+                lineNumber: Number.isFinite(e?.lineNumber) ? e.lineNumber : lineItems[idx].lineNumber,
+                line: typeof e?.line === 'string' && e.line.trim() ? e.line : lineItems[idx].code,
+                explanation: typeof e?.explanation === 'string' ? e.explanation : `Line ${lineItems[idx].lineNumber} executed successfully!`,
+                placeholders: Array.isArray(e?.placeholders) ? e.placeholders : [],
+                type: typeof e?.type === 'string' ? e.type : 'assignment'
+            }));
             
         } catch (parseError) {
             console.error('❌ Failed to parse JSON response:', parseError);
             console.error('Raw response:', rawText);
             
             // Fallback: generate simple explanations
-            explanations = lines.map((line, idx) => ({
+            explanations = lineItems.map((item, idx) => ({
                 step: idx,
-                line: line,
-                explanation: line.includes('input()')
+                lineNumber: item.lineNumber,
+                line: item.code,
+                explanation: item.code.includes('input(')
                     ? `You'll type a value here, and Python stores it in a variable!`
-                    : line.includes('print(')
+                    : item.code.includes('print(')
                     ? `Python displays the result on the screen!`
                     : `Python creates a box and stores a value inside!`,
                 placeholders: [],
-                type: line.includes('input()') ? 'input' : line.includes('print(') ? 'print' : 'assignment'
+                type: item.code.includes('input(') ? 'input' : item.code.includes('print(') ? 'print' : 'assignment'
             }));
         }
 
         const result = { explanations };
+        console.log('\n📤 Final result being sent to frontend:', JSON.stringify(result, null, 2));
+        console.log('========== END DEBUG ==========\n');
         
         // Store in cache
         explanationCache.set(cacheKey, {

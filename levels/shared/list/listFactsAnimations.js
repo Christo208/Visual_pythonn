@@ -442,7 +442,7 @@ function flyGreenSparkToOutput(timeline, counterDiv, outputPanel, outputValue, s
         const trailParticles = createDirectionalTrail(startX, startY, targetX, targetY);
 
         try {
-            const whoosh = new Audio('../sounds/whoosh.wav');
+            const whoosh = new Audio(new URL('../../sounds/whoosh.wav', import.meta.url).href);
             whoosh.volume = 0.5;
             whoosh.play().catch(e => console.warn('Whoosh failed:', e));
         } catch (e) {}
@@ -604,7 +604,7 @@ export function animatePrintString(codeText, outputPanel, outputValue, onComplet
     const trailParticles = createDirectionalTrail(startX, startY, targetX, targetY);
     
     try {
-        const whoosh = new Audio('../sounds/whoosh.wav');
+        const whoosh = new Audio(new URL('../../sounds/whoosh.wav', import.meta.url).href);
         whoosh.volume = 0.5;
         whoosh.play().catch(e => console.warn('Whoosh failed:', e));
     } catch (e) {}

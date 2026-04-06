@@ -41,3 +41,6 @@ __pycache__/
 # macOS files
 .AppleDouble
 ._*
+
+# Project specific
+backlog.md

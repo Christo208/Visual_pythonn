@@ -266,7 +266,7 @@ export function animatePop(listContainer, targetIndex, outputDiv, resultValue, i
 
     timeline.call(() => {
         try {
-            const audio = new Audio('../sounds/3secscan.wav');
+            const audio = new Audio(new URL('../../sounds/3secscan.wav', import.meta.url).href);
             audio.volume = 0.5;
             audio.play().catch(e => console.warn('3secscan.wav play failed', e));
         } catch (e) { console.warn('Audio error', e); }
@@ -314,7 +314,7 @@ export function animatePop(listContainer, targetIndex, outputDiv, resultValue, i
 
     timeline.call(() => {
         try {
-            const popAudio = new Audio('../sounds/pop.wav');
+            const popAudio = new Audio(new URL('../../sounds/pop.wav', import.meta.url).href);
             popAudio.volume = 0.6;
             popAudio.play().catch(e => console.warn('pop.wav play failed', e));
         } catch (e) { console.warn('Audio error', e); }
@@ -348,7 +348,7 @@ export function animatePop(listContainer, targetIndex, outputDiv, resultValue, i
 
     timeline.call(() => {
         try {
-            const appearAudio = new Audio('../sounds/appears.wav');
+            const appearAudio = new Audio(new URL('../../sounds/appears.wav', import.meta.url).href);
             appearAudio.volume = 0.6;
             appearAudio.play().catch(e => console.warn('appears.wav play failed', e));
         } catch (e) { console.warn('Audio error', e); }
@@ -1017,7 +1017,7 @@ export async function animateReverse(listContainer, listName, originalItems, rev
     tl.to(rewindIcon, { opacity: 1, duration: 0.2 });
 
     // 3. Play rewind sound
-    playSoundReverse('../sounds/rewind.wav');
+    playSoundReverse('../../sounds/rewind.wav');
 
     // ============ CALCULATE TIMING ============
     // We need to swap pairs from outside-in
@@ -1183,9 +1183,11 @@ export async function animateReverse(listContainer, listName, originalItems, rev
 
         // Ensure final state is correct
         reversedItems.forEach((item, idx) => {
-            const valueEl = contentCells[idx].querySelector('.list-value');
+            const cell = contentCells[idx];
+            if (!cell) return;
+            const valueEl = cell.querySelector('.list-value');
             if (valueEl) valueEl.textContent = item;
-            else contentCells[idx].textContent = item;
+            else cell.textContent = item;
         });
     }
 
@@ -1223,7 +1225,7 @@ async function animateReverseN1(listContainer, onComplete) {
     tl.to(rewindIcon, { opacity: 1, duration: 0.2 });
 
     // Play sound
-    playSoundReverse('../sounds/rewind.wav');
+    playSoundReverse('../../sounds/rewind.wav');
 
     // Pulse 4 times over 2 seconds
     const pulseCount = 4;
@@ -1267,7 +1269,8 @@ async function animateReverseN1(listContainer, onComplete) {
  */
 function playSoundReverse(src) {
     try {
-        const audio = new Audio(src);
+        const resolvedSrc = /^(https?:|data:|blob:)/.test(src) ? src : new URL(src, import.meta.url).href;
+        const audio = new Audio(resolvedSrc);
         audio.volume = 0.5;
         audio.play().catch(err => console.log('Reverse sound play failed:', err));
     } catch (e) {
@@ -1334,7 +1337,7 @@ export async function animateReverseSimplified(listContainer, listName, original
     activeReverseIcon = rewindIcon;
 
     tl.to(rewindIcon, { opacity: 1, duration: 0.15 });
-    playSoundReverse('../sounds/rewind.wav');
+    playSoundReverse('../../sounds/rewind.wav');
 
     // ============ GET POSITIONS ============
     const containerRect = listContainer.getBoundingClientRect();
@@ -1564,7 +1567,7 @@ async function animateReverseSimplifiedN1(listContainer, onComplete) {
     tl.to(rewindIcon, { opacity: 1, duration: 0.15 });
 
     // Play sound
-    playSoundReverse('../sounds/rewind.wav');
+    playSoundReverse('../../sounds/rewind.wav');
 
     // Pulse 6 times over 2 seconds (as requested: multiple times)
     const pulseCount = 6;
@@ -1676,7 +1679,7 @@ export async function animateAppendImproved(listContainer, listName, valueToAppe
 
     // Play whoosh sound
     tl.call(() => {
-        const audio = new Audio('../sounds/whoosh.wav');
+        const audio = new Audio(new URL('../../sounds/whoosh.wav', import.meta.url).href);
         audio.volume = 0.5;
         audio.play().catch(e => console.log('Sound error:', e));
     }, null, 0.2);
@@ -1763,7 +1766,7 @@ export async function animateAppendImproved(listContainer, listName, valueToAppe
 
     // Play append sound
     tl.call(() => {
-        const audio = new Audio('../sounds/append.wav');
+        const audio = new Audio(new URL('../../sounds/append.wav', import.meta.url).href);
         audio.volume = 0.5;
         audio.play().catch(e => console.log('Sound error:', e));
     }, null, 1.0);
@@ -1989,7 +1992,7 @@ export async function animateInsert(listContainer, listName, insertIndex, valueT
     }, dropStartTime);
 
     tl.call(() => {
-        const audio = new Audio('../sounds/whoosh.wav');
+        const audio = new Audio(new URL('../../sounds/whoosh.wav', import.meta.url).href);
         audio.volume = 0.5;
         audio.play().catch(e => console.log('Sound error:', e));
     }, null, dropStartTime);
@@ -2024,7 +2027,7 @@ export async function animateInsert(listContainer, listName, insertIndex, valueT
         gapRow.classList.remove('insert-gap-row');
         gapRow.dataset.originalIndex = targetIndex;
 
-        const audio = new Audio('../sounds/append.wav');
+        const audio = new Audio(new URL('../../sounds/append.wav', import.meta.url).href);
         audio.volume = 0.5;
         audio.play().catch(e => console.log('Sound error:', e));
     }, null, dropStartTime + 0.8);
@@ -2135,7 +2138,7 @@ export function animateClear(listContainer, varName, onComplete) {
 
         // Pop sound
         timeline.call(() => {
-            const popAudio = new Audio('../sounds/pop.wav');
+            const popAudio = new Audio(new URL('../../sounds/pop.wav', import.meta.url).href);
             popAudio.volume = 0.4;
             popAudio.play().catch(() => { });
         }, null, startTime);
@@ -2167,7 +2170,7 @@ export function animateClear(listContainer, varName, onComplete) {
 
     // Highlight + pop
     timeline.call(() => {
-        const popAudio = new Audio('../sounds/pop.wav');
+        const popAudio = new Audio(new URL('../../sounds/pop.wav', import.meta.url).href);
         popAudio.volume = 0.4;
         popAudio.play().catch(() => { });
     }, null, lastRowTime);
@@ -2182,7 +2185,7 @@ export function animateClear(listContainer, varName, onComplete) {
 
     timeline.call(() => {
         // Play cleaned.wav
-        const audio = new Audio('../sounds/cleaned.wav');
+        const audio = new Audio(new URL('../../sounds/cleaned.wav', import.meta.url).href);
         audio.volume = 0.6;
         audio.play().catch(e => console.warn('cleaned.wav failed', e));
         setTimeout(() => { audio.pause(); audio.currentTime = 0; }, 2000);
