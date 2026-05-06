@@ -57,6 +57,21 @@ import {
     cleanupSortElements
 } from './levels/shared/list/listModificationAnimations.js';
 
+// ============ LOOP VISUALS (Level 8) ============
+import {
+    showGlassPane,
+    dissolveGlassPane,
+    injectEngineBox,
+    updateForEngine,
+    updateWhileEngine,
+    removeEngineBox,
+    animateLoopBack,
+    updateActiveLine,
+    animateBreakArrow,
+    disintegrateEngineBox,
+    animateContinueArrow
+} from './levels/lvl8-loops/glassAnimations.js';
+
 // ============ GLOBAL VARIABLES ============
 let editor;
 let pyodide = null;
@@ -73,6 +88,27 @@ let currentVariables = {};
 let currentLineMarker = null;
 let smartExplanations = [];
 let allUserInputs = []; // FIXED BUG 3.1: Track all user inputs for placeholder logic
+let isExplainingLoading = false;
+let loadingFactInterval = null;
+
+const loadingFacts = [
+    "Python reads your code top-to-bottom like a story.",
+    "Indentation is Python's way of saying 'this belongs together'.",
+    "for loops are like a playlist: one item at a time.",
+    "while loops keep going until the condition says 'stop!'.",
+    "print() is Python's way of talking to the screen.",
+    "Variables are labeled boxes that can hold any kind of treasure.",
+    "Lists are flexible—add, remove, shuffle—no problem.",
+    "len() just counts how many things are inside.",
+    "if/elif/else is Python choosing the first true path.",
+    "Errors are Python's way of saying 'wait...something's off.'"
+];
+
+// ============ LOOP VISUAL STATE ============
+let glassState = null;   // { glassPaneEl, frostedMarks, activeLoopMarks }
+let engineRef = null;    // { widget, element }
+let loopStepHistory = [];
+let loopVisualStack = [];
 
 // ============ LIST VISUALIZER STATE ============
 let renderedLists = new Set();
@@ -123,6 +159,67 @@ for name in list(globals().keys()):
         `);
     } catch (e) {
         console.warn('Could not clear Pyodide globals:', e);
+    }
+}
+
+async function resetLoopVisuals() {
+    while (loopVisualStack.length > 0) {
+        const frame = loopVisualStack.pop();
+        if (frame?.glassState?.glassPaneEl) {
+            try {
+                await dissolveGlassPane(frame.glassState.glassPaneEl, editor,
+                    frame.glassState.frostedMarks, frame.glassState.activeLoopMarks);
+            } catch (e) { /* ignore */ }
+        }
+        if (frame?.engineRef) {
+            try {
+                await removeEngineBox(frame.engineRef);
+            } catch (e) { /* ignore */ }
+        }
+    }
+
+    glassState = null;
+    engineRef = null;
+    updateActiveLine(editor, null);
+}
+
+function showExplanationLoading() {
+    const overlay = document.getElementById('explainLoading');
+    const factEl = document.getElementById('loadingFact');
+    if (!overlay || !factEl) return;
+
+    const factPool = [...loadingFacts];
+    for (let i = factPool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [factPool[i], factPool[j]] = [factPool[j], factPool[i]];
+    }
+    let idx = 0;
+    factEl.textContent = factPool[idx];
+    overlay.classList.remove('hidden');
+
+    if (loadingFactInterval) clearInterval(loadingFactInterval);
+    loadingFactInterval = setInterval(() => {
+        idx++;
+        if (idx >= factPool.length) {
+            for (let i = factPool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [factPool[i], factPool[j]] = [factPool[j], factPool[i]];
+            }
+            idx = 0;
+        }
+        factEl.classList.remove('fade-in');
+        void factEl.offsetWidth;
+        factEl.textContent = factPool[idx];
+        factEl.classList.add('fade-in');
+    }, 10000);
+}
+
+function hideExplanationLoading() {
+    const overlay = document.getElementById('explainLoading');
+    if (overlay) overlay.classList.add('hidden');
+    if (loadingFactInterval) {
+        clearInterval(loadingFactInterval);
+        loadingFactInterval = null;
     }
 }
 
@@ -215,13 +312,18 @@ document.getElementById('runBtn').onclick = async () => {
     renderedLists.clear();
     listAliasMap.clear();
     listStepHistory = [];
+    loopStepHistory = [];
+    await resetLoopVisuals();
     await clearPyodideUserGlobals();
 
     editor.setOption("readOnly", true);
     document.getElementById('runBtn').disabled = true;
-    document.getElementById('stepBtn').disabled = false;
+    document.getElementById('stepBtn').disabled = true;
     document.getElementById('output').textContent = '⏳ Analyzing code...';
     document.getElementById('memoryBank').innerHTML = '';
+
+    isExplainingLoading = true;
+    showExplanationLoading();
 
     const rawLines = editor.getValue().split('\n');
 
@@ -267,6 +369,10 @@ document.getElementById('runBtn').onclick = async () => {
     } catch (error) {
         console.error("❌ Fetch Error (Is your server.js running on Port 3000?):", error);
         smartExplanations = [];
+    } finally {
+        isExplainingLoading = false;
+        hideExplanationLoading();
+        document.getElementById('stepBtn').disabled = false;
     }
 
     document.getElementById('output').textContent = '';
@@ -276,7 +382,7 @@ document.getElementById('runBtn').onclick = async () => {
 
 // ============ STEP BUTTON ============
 document.getElementById('stepBtn').onclick = async () => {
-    if (activeInnerSteps > 0 || !isRunning) return;
+    if (activeInnerSteps > 0 || !isRunning || isExplainingLoading) return;
 
     // If we've reached the end, show celebration but don't block navigation
     if (currentStep >= totalSteps) {
@@ -298,12 +404,13 @@ document.getElementById('stepBtn').onclick = async () => {
     stepAnimations[currentStep] = [];
     highlightLine(step.lineNumber);
 
-    const finalizeStep = (listData = null) => {
+    const finalizeStep = (listData = null, loopData = null) => {
         // DEBUG: Verify timing - currentVariables should be populated HERE before calling generateStepExplanation
         const varsPopulated = Object.keys(currentVariables).length;
         console.log(`[TIMING DEBUG] finalizeStep called. currentVariables has ${varsPopulated} entries:`, currentVariables);
 
         listStepHistory.push(listData);
+        loopStepHistory.push(loopData);
         generateStepExplanation(step);
         currentStep++;
         updateStepIndicator();
@@ -314,7 +421,7 @@ document.getElementById('stepBtn').onclick = async () => {
     try {
         if (step.type === 'input') {
             await handleInputStatement(step);
-            finalizeStep(null);
+            finalizeStep(null, null);
         } else if (step.type === 'if-block') {
             // If we previously injected lines here, remove them first (prevents duplicates on Back->Next)
             if (step.numInjected > 0) {
@@ -337,13 +444,43 @@ document.getElementById('stepBtn').onclick = async () => {
                 step.numInjected = 0;
             }
 
-            finalizeStep(null);
+            finalizeStep(null, null);
+        } else if (step.type === 'loop-block') {
+            const loopData = await executeLoopStep(step);
+            finalizeStep(null, loopData);
+        } else if (step.type === 'loop-assign') {
+            const loopData = await handleLoopAssign(step);
+            finalizeStep(null, loopData);
+        } else if (step.type === 'while-check') {
+            const loopData = await handleWhileCheck(step);
+            finalizeStep(null, loopData);
+        } else if (step.type === 'loop-back') {
+            const loopData = await handleLoopBack(step);
+            finalizeStep(null, loopData);
+        } else if (step.type === 'loop-exit') {
+            const loopData = await handleLoopExit(step);
+            finalizeStep(null, loopData);
+        } else if (step.type === 'loop-break') {
+            const loopData = await handleLoopBreak(step);
+            finalizeStep(null, loopData);
+        } else if (step.type === 'loop-continue') {
+            const loopData = await handleLoopContinue(step);
+            finalizeStep(null, loopData);
         } else {
             const listData = await executeLineStepWithLists(step);
-            finalizeStep(listData);
+            finalizeStep(listData, null);
         }
 
     } catch (error) {
+        if (error && error._handled) {
+            await generateErrorExplanation(error, step.code, step.lineNumber);
+            isRunning = false;
+            stepBtn.disabled = true;
+            editor.setOption('readOnly', false);
+            updateButtons();
+            return;
+        }
+
         await generateErrorExplanation(error, step.code, step.lineNumber);
         stepBtn.disabled = true;
     }
@@ -351,6 +488,12 @@ document.getElementById('stepBtn').onclick = async () => {
 
 // ============ LINE STEP EXECUTION (List-aware wrapper) ============
 async function executeLineStepWithLists(step) {
+    const makeHandledError = (message) => {
+        const err = new Error(message);
+        err._handled = true;
+        return err;
+    };
+
     // Default to "no special list undo"
     let listDataForUndo = null;
 
@@ -585,7 +728,7 @@ async function executeLineStepWithLists(step) {
                         });
 
                         if (currentStep > 0) document.getElementById('backBtn').disabled = false;
-                        return null;
+                        throw makeHandledError('IndexError: list index out of range');
                     }
                 }
             }
@@ -618,7 +761,7 @@ async function executeLineStepWithLists(step) {
                         });
 
                         if (currentStep > 0) document.getElementById('backBtn').disabled = false;
-                        return { isIndexStep: true };
+                        throw makeHandledError(`ValueError: '${searchValue}' is not in list`);
                     }
                 }
             }
@@ -710,6 +853,10 @@ async function executeLineStepWithLists(step) {
 
                 if (currentStep > 0) document.getElementById('backBtn').disabled = false;
 
+                if (isError) {
+                    throw makeHandledError('IndexError: pop index out of range');
+                }
+
                 // PHASE 1 FIX: Update currentVariables before returning
                 const varsJs_pop = pyodide.globals.toJs();
                 for (let [key, value] of varsJs_pop) {
@@ -800,6 +947,10 @@ async function executeLineStepWithLists(step) {
                 });
 
                 if (currentStep > 0) document.getElementById('backBtn').disabled = false;
+
+                if (isError) {
+                    throw makeHandledError(`ValueError: ${searchValue} is not in list`);
+                }
 
                 // PHASE 1 FIX: Update currentVariables before returning
                 const varsJs_remove = pyodide.globals.toJs();
@@ -944,6 +1095,10 @@ async function executeLineStepWithLists(step) {
 
                 if (currentStep > 0) document.getElementById('backBtn').disabled = false;
 
+                if (isError) {
+                    throw makeHandledError('TypeError: list contains non-comparable values');
+                }
+
                 // PHASE 1 FIX: Update currentVariables before returning
                 const varsJs_sort = pyodide.globals.toJs();
                 for (let [key, value] of varsJs_sort) {
@@ -1066,6 +1221,506 @@ async function executeLineStepWithLists(step) {
     }
 
     return listDataForUndo;
+}
+
+// ============ LOOP STEP EXECUTION ============
+function clonePlanSteps(steps) {
+    return steps.map(s => ({
+        lineNumber: s.lineNumber,
+        code: s.code,
+        type: s.type,
+        ifStructure: s.ifStructure,
+        loopMeta: s.loopMeta
+    }));
+}
+
+function annotateLoopSteps(steps, loopMeta) {
+    if (!Array.isArray(steps) || !loopMeta) return;
+    steps.forEach(step => {
+        if (!step.enclosingLoopMeta) step.enclosingLoopMeta = loopMeta;
+    });
+}
+
+function getTargetLoopMeta(step) {
+    return step?.enclosingLoopMeta || step?.loopMeta || null;
+}
+
+function isStepInLoop(step, loopMeta) {
+    if (!step || !loopMeta) return false;
+    return step.loopMeta === loopMeta || step.enclosingLoopMeta === loopMeta;
+}
+
+function getLoopBodyRange(loopMeta) {
+    if (typeof loopMeta.endLine === 'number' && loopMeta.endLine >= loopMeta.headerLine) {
+        return { startLine: loopMeta.headerLine, endLine: loopMeta.endLine };
+    }
+
+    const bodyLines = (loopMeta.bodyPlan || []).map(s => s.lineNumber);
+    if (bodyLines.length === 0) {
+        return { startLine: loopMeta.headerLine, endLine: loopMeta.headerLine };
+    }
+    return {
+        startLine: Math.min(...bodyLines),
+        endLine: Math.max(...bodyLines)
+    };
+}
+
+function getLoopDepth() {
+    return Math.min(loopVisualStack.length + 1, 3);
+}
+
+function pauseLoopVisuals() {
+    const top = loopVisualStack[loopVisualStack.length - 1];
+    if (!top) return;
+    if (top.glassState?.glassPaneEl) top.glassState.glassPaneEl.classList.add('loop-paused');
+    if (top.engineRef?.element) top.engineRef.element.classList.add('engine-paused');
+}
+
+function resumeLoopVisuals() {
+    const top = loopVisualStack[loopVisualStack.length - 1];
+    if (!top) return;
+    if (top.glassState?.glassPaneEl) top.glassState.glassPaneEl.classList.remove('loop-paused');
+    if (top.engineRef?.element) top.engineRef.element.classList.remove('engine-paused');
+    if (top.glassState?.cursorEl) updateActiveLine(editor, top.loopMeta?.headerLine ?? null, top.glassState.cursorEl);
+}
+
+function hydrateConditionText(condition, variables) {
+    if (!condition) return '';
+    let hydrated = condition;
+    Object.keys(variables || {}).forEach(name => {
+        const value = variables[name];
+        hydrated = hydrated.replace(new RegExp(`\\b${name}\\b`, 'g'), String(value));
+    });
+    return hydrated;
+}
+
+function formatPythonLiteral(value) {
+    if (value === null || value === undefined) return 'None';
+    if (typeof value === 'number') return String(value);
+    if (typeof value === 'boolean') return value ? 'True' : 'False';
+    const escaped = String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return `"${escaped}"`;
+}
+
+function makeHandledError(message, original = null) {
+    const err = new Error(message);
+    err._handled = true;
+    if (original) err.originalError = original;
+    return err;
+}
+
+async function getIterableItems(iterableExpr) {
+    if (!pyodide || !iterableExpr) return [];
+    let pyValue = null;
+    try {
+        pyValue = await pyodide.runPythonAsync(`list(${iterableExpr})`);
+        const items = pyValue && typeof pyValue.toJs === 'function' ? pyValue.toJs() : Array.from(pyValue || []);
+        return Array.isArray(items) ? items : [];
+    } catch (e) {
+        const message = e?.message || String(e);
+        throw makeHandledError(message, e);
+    } finally {
+        try { if (pyValue && typeof pyValue.destroy === 'function') pyValue.destroy(); } catch { }
+    }
+}
+
+async function executeLoopStep(step) {
+    const loopMeta = step.loopMeta || {};
+    const loopData = {
+        type: 'loop-block',
+        loopMeta,
+        glassCreated: false,
+        engineCreated: false,
+        pausedOuter: false,
+        depth: getLoopDepth()
+    };
+
+    const loopRange = getLoopBodyRange(loopMeta);
+
+    const topFrame = loopVisualStack[loopVisualStack.length - 1];
+    const isSameLoopActive = topFrame && topFrame.loopMeta === loopMeta;
+
+    if (!isSameLoopActive) {
+        if (loopVisualStack.length > 0) {
+            pauseLoopVisuals();
+            loopData.pausedOuter = true;
+        }
+
+        let newEngineRef = null;
+        let newGlassState = null;
+
+        if (loopMeta.type === 'for') {
+            if (!step.loopState) step.loopState = { iterIndex: 0, items: null };
+            if (!step.loopState.items) step.loopState.items = await getIterableItems(loopMeta.iterableExpr);
+
+            newEngineRef = injectEngineBox(editor, 'for', loopMeta.headerLine, {
+                iterVar: loopMeta.iterVar,
+                iterableName: loopMeta.iterableExpr,
+                items: step.loopState.items || []
+            }, loopData.depth);
+            loopData.engineCreated = true;
+        } else if (loopMeta.type === 'while') {
+            newEngineRef = injectEngineBox(editor, 'while', loopMeta.headerLine, {
+                condition: loopMeta.condition || ''
+            }, loopData.depth);
+            loopData.engineCreated = true;
+        }
+
+        newGlassState = showGlassPane(editor, loopMeta.headerLine, loopRange.endLine, loopData.depth);
+        loopData.glassCreated = true;
+
+        const frame = { loopMeta, glassState: newGlassState, engineRef: newEngineRef, depth: loopData.depth };
+        loopVisualStack.push(frame);
+        glassState = newGlassState;
+        engineRef = newEngineRef;
+    } else {
+        glassState = topFrame.glassState;
+        engineRef = topFrame.engineRef;
+    }
+
+    updateActiveLine(editor, loopMeta.headerLine, glassState?.cursorEl || null);
+
+    const injected = [];
+
+    if (loopMeta.type === 'for') {
+        const items = step.loopState.items || [];
+        if (step.loopState.iterIndex < items.length) {
+            const iterIndex = step.loopState.iterIndex;
+            const iterValue = items[iterIndex];
+
+            injected.push({
+                lineNumber: loopMeta.headerLine,
+                code: `${loopMeta.iterVar} = ${formatPythonLiteral(iterValue)}`,
+                type: 'loop-assign',
+                iterVar: loopMeta.iterVar,
+                iterValue,
+                iterIndex,
+                enclosingLoopMeta: loopMeta
+            });
+
+            const bodySteps = clonePlanSteps(loopMeta.bodyPlan || []);
+            annotateLoopSteps(bodySteps, loopMeta);
+            injected.push(...bodySteps);
+
+            injected.push({
+                lineNumber: loopRange.endLine,
+                code: 'loop-back',
+                type: 'loop-back',
+                toLine: loopMeta.headerLine,
+                loopMeta,
+                enclosingLoopMeta: loopMeta
+            });
+
+            injected.push({
+                lineNumber: loopMeta.headerLine,
+                code: loopMeta.code || '',
+                type: 'loop-block',
+                loopMeta,
+                loopState: {
+                    iterIndex: iterIndex + 1,
+                    items
+                },
+                enclosingLoopMeta: loopMeta
+            });
+        } else {
+            injected.push({
+                lineNumber: loopMeta.headerLine,
+                code: 'loop-exit',
+                type: 'loop-exit',
+                loopMeta,
+                enclosingLoopMeta: loopMeta
+            });
+        }
+    } else if (loopMeta.type === 'while') {
+        const hydrated = hydrateConditionText(loopMeta.condition || '', currentVariables);
+        const conditionResult = await evaluateConditionExpression(loopMeta.condition || 'False');
+
+        injected.push({
+            lineNumber: loopMeta.headerLine,
+            code: hydrated,
+            type: 'while-check',
+            conditionStr: hydrated,
+            conditionResult,
+            loopMeta,
+            enclosingLoopMeta: loopMeta
+        });
+
+        if (conditionResult) {
+            const bodySteps = clonePlanSteps(loopMeta.bodyPlan || []);
+            annotateLoopSteps(bodySteps, loopMeta);
+            injected.push(...bodySteps);
+            injected.push({
+                lineNumber: loopRange.endLine,
+                code: 'loop-back',
+                type: 'loop-back',
+                toLine: loopMeta.headerLine,
+                loopMeta,
+                enclosingLoopMeta: loopMeta
+            });
+            injected.push({
+                lineNumber: loopMeta.headerLine,
+                code: loopMeta.code || '',
+                type: 'loop-block',
+                loopMeta,
+                enclosingLoopMeta: loopMeta
+            });
+        } else {
+            injected.push({
+                lineNumber: loopMeta.headerLine,
+                code: 'loop-exit',
+                type: 'loop-exit',
+                loopMeta,
+                enclosingLoopMeta: loopMeta
+            });
+        }
+    }
+
+    if (injected.length > 0) {
+        step.numInjected = injected.length;
+        executionPlan.splice(currentStep + 1, 0, ...injected);
+        totalSteps = executionPlan.length;
+    }
+
+    loopData.injectedCount = injected.length;
+    return loopData;
+}
+
+async function handleLoopAssign(step) {
+    updateActiveLine(editor, step.lineNumber, glassState?.cursorEl || null);
+
+    if (engineRef) {
+        updateForEngine(engineRef.element, step.iterIndex);
+    }
+
+    try {
+        pyodide.globals.set('_loop_iter_value', step.iterValue);
+        await pyodide.runPythonAsync(`${step.iterVar} = _loop_iter_value`);
+    } finally {
+        try { pyodide.globals.delete('_loop_iter_value'); } catch { }
+    }
+
+    const varName = step.iterVar;
+    const varValue = step.iterValue;
+
+    let startX, startY;
+    if (engineRef) {
+        const currentToken = engineRef.element.querySelector('.token-current');
+        if (currentToken) {
+            const tokenRect = currentToken.getBoundingClientRect();
+            startX = tokenRect.left + tokenRect.width / 2;
+            startY = tokenRect.top + tokenRect.height / 2;
+        }
+    }
+
+    if (!startX) {
+        const lineCoords = editor.charCoords({ line: step.lineNumber, ch: 0 }, 'page');
+        startX = lineCoords.left;
+        startY = lineCoords.top;
+    }
+
+    let box = document.getElementById(`box-${varName}`);
+    const isNew = !box;
+    if (!box) {
+        const bank = document.getElementById('memoryBank');
+        box = document.createElement('div');
+        box.className = 'variable-box';
+        box.id = `box-${varName}`;
+        box.innerHTML = `<span class="box-label">${varName}</span><span class="box-value">${varValue}</span>`;
+        bank.appendChild(box);
+        const action = { type: 'memory', element: box, isNew: true };
+        animationHistory.push(action);
+        stepAnimations[currentStep].push(action);
+    }
+
+    const loopData = {
+        type: 'loop-assign',
+        iterVar: varName,
+        iterIndex: step.iterIndex,
+        previousValue: isNew ? null : box.querySelector('.box-value')?.textContent,
+        isNewBox: isNew
+    };
+
+    const spark = document.createElement('div');
+    spark.className = 'animation-spark';
+    spark.textContent = String(varValue);
+    spark.style.left = `${startX}px`;
+    spark.style.top = `${startY}px`;
+    document.body.appendChild(spark);
+
+    const targetRect = box.getBoundingClientRect();
+    const endX = targetRect.left + targetRect.width / 2;
+    const endY = targetRect.top + targetRect.height / 2;
+
+    const trailParticles = createDirectionalTrail(startX, startY, endX, endY, false);
+
+    sounds.whoosh.currentTime = 0;
+    sounds.whoosh.play().catch(() => { });
+
+    await new Promise(resolve => {
+        gsap.to(spark, {
+            left: endX - 40,
+            top: endY,
+            duration: 1.0,
+            ease: 'power2.out',
+            onUpdate: function () {
+                const sparkRect = spark.getBoundingClientRect();
+                updateTrailParticles(trailParticles, sparkRect.left + sparkRect.width / 2,
+                    sparkRect.top + sparkRect.height / 2, startX, startY);
+            },
+            onComplete: () => {
+                spark.remove();
+                removeTrail(trailParticles);
+                box.querySelector('.box-value').textContent = String(varValue);
+
+                if (isNew) {
+                    gsap.to(box, { opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(1.7)', onComplete: resolve });
+                } else {
+                    box.classList.add('pulse-update');
+                    setTimeout(() => box.classList.remove('pulse-update'), 500);
+                    resolve();
+                }
+            }
+        });
+    });
+
+    currentVariables[varName] = String(varValue);
+    return loopData;
+}
+
+async function handleWhileCheck(step) {
+    updateActiveLine(editor, step.lineNumber, glassState?.cursorEl || null);
+    if (engineRef) {
+        await updateWhileEngine(engineRef.element, step.conditionStr, step.conditionResult);
+    }
+    return {
+        type: 'while-check',
+        conditionStr: step.conditionStr,
+        conditionResult: step.conditionResult
+    };
+}
+
+async function handleLoopBack(step) {
+    const loopMeta = step.loopMeta || {};
+    const fromLine = step.lineNumber;
+    const toLine = step.toLine !== undefined ? step.toLine : loopMeta.headerLine;
+
+    const depth = loopVisualStack[loopVisualStack.length - 1]?.depth || 1;
+    await animateLoopBack(editor, fromLine, toLine, depth);
+    updateActiveLine(editor, toLine, glassState?.cursorEl || null);
+
+    return { type: 'loop-back', fromLine, toLine };
+}
+
+async function handleLoopExit(step) {
+    const frame = loopVisualStack.pop();
+    if (frame?.glassState) {
+        await dissolveGlassPane(frame.glassState.glassPaneEl, editor,
+            frame.glassState.frostedMarks, frame.glassState.activeLoopMarks);
+    }
+    if (frame?.engineRef) {
+        await removeEngineBox(frame.engineRef);
+    }
+
+    const top = loopVisualStack[loopVisualStack.length - 1] || null;
+    glassState = top ? top.glassState : null;
+    engineRef = top ? top.engineRef : null;
+    if (top) {
+        resumeLoopVisuals();
+        updateActiveLine(editor, top.loopMeta?.headerLine ?? null, top.glassState?.cursorEl || null);
+    } else {
+        updateActiveLine(editor, null);
+    }
+
+    return { type: 'loop-exit', loopMeta: step.loopMeta, depth: frame?.depth || 1 };
+}
+
+async function handleLoopContinue(step) {
+    const loopMeta = getTargetLoopMeta(step);
+    if (!loopMeta) throw makeHandledError('SyntaxError: continue outside loop');
+
+    updateActiveLine(editor, step.lineNumber, glassState?.cursorEl || null);
+
+    let loopBackIndex = -1;
+    for (let idx = currentStep + 1; idx < executionPlan.length; idx++) {
+        const nextStep = executionPlan[idx];
+        if (nextStep.type === 'loop-back' && nextStep.loopMeta === loopMeta) {
+            loopBackIndex = idx;
+            break;
+        }
+    }
+
+    let removedSteps = [];
+    const insertIndex = currentStep + 1;
+    if (loopBackIndex !== -1 && loopBackIndex > insertIndex) {
+        removedSteps = executionPlan.splice(insertIndex, loopBackIndex - insertIndex);
+        totalSteps = executionPlan.length;
+    }
+
+    await animateContinueArrow(editor, step.lineNumber, loopMeta.headerLine);
+    updateActiveLine(editor, loopMeta.headerLine, glassState?.cursorEl || null);
+
+    return {
+        type: 'loop-continue',
+        loopMeta,
+        removedSteps,
+        insertIndex
+    };
+}
+
+async function handleLoopBreak(step) {
+    const loopMeta = getTargetLoopMeta(step);
+    if (!loopMeta) throw makeHandledError('SyntaxError: break outside loop');
+
+    updateActiveLine(editor, step.lineNumber, glassState?.cursorEl || null);
+
+    const loopRange = getLoopBodyRange(loopMeta);
+    if (glassState?.glassPaneEl) {
+        glassState.glassPaneEl.classList.add('break-flash');
+        setTimeout(() => {
+            if (glassState?.glassPaneEl) glassState.glassPaneEl.classList.remove('break-flash');
+        }, 250);
+    }
+
+    let removedSteps = [];
+    const insertIndex = currentStep + 1;
+    let idx = insertIndex;
+    while (idx < executionPlan.length && isStepInLoop(executionPlan[idx], loopMeta)) {
+        removedSteps.push(executionPlan[idx]);
+        idx++;
+    }
+    if (removedSteps.length > 0) {
+        executionPlan.splice(insertIndex, removedSteps.length);
+        totalSteps = executionPlan.length;
+    }
+
+    await animateBreakArrow(editor, step.lineNumber, loopRange.endLine);
+
+    const frame = loopVisualStack.pop();
+    if (frame?.engineRef) {
+        await disintegrateEngineBox(frame.engineRef);
+    }
+    if (frame?.glassState) {
+        await dissolveGlassPane(frame.glassState.glassPaneEl, editor,
+            frame.glassState.frostedMarks, frame.glassState.activeLoopMarks);
+    }
+
+    const top = loopVisualStack[loopVisualStack.length - 1] || null;
+    glassState = top ? top.glassState : null;
+    engineRef = top ? top.engineRef : null;
+    if (top) {
+        resumeLoopVisuals();
+        updateActiveLine(editor, top.loopMeta?.headerLine ?? null, top.glassState?.cursorEl || null);
+    } else {
+        updateActiveLine(editor, null);
+    }
+
+    return {
+        type: 'loop-break',
+        loopMeta,
+        depth: frame?.depth || 1,
+        removedSteps,
+        insertIndex
+    };
 }
 
 // ============ LIST UNDO (Back button) ============
@@ -1449,6 +2104,84 @@ async function undoListStep(stepData) {
                 if (countSection) countSection.textContent = `N is ${originalItems.length}`;
             }
         }
+    }
+}
+
+// ============ LOOP UNDO (Back button) ============
+async function undoLoopStep(stepData) {
+    if (!stepData) return;
+
+    if ((stepData.type === 'loop-break' || stepData.type === 'loop-continue')
+        && Array.isArray(stepData.removedSteps) && stepData.removedSteps.length > 0) {
+        executionPlan.splice(stepData.insertIndex, 0, ...stepData.removedSteps);
+        totalSteps = executionPlan.length;
+    }
+
+    if (stepData.type === 'loop-assign') {
+        const { iterVar, previousValue, isNewBox, iterIndex } = stepData;
+        if (!isNewBox && previousValue !== null) {
+            const box = document.getElementById(`box-${iterVar}`);
+            if (box) box.querySelector('.box-value').textContent = previousValue;
+        }
+
+        if (engineRef && typeof iterIndex === 'number' && iterIndex > 0) {
+            updateForEngine(engineRef.element, iterIndex - 1);
+        }
+
+        try {
+            if (previousValue !== null) {
+                await pyodide.runPythonAsync(`${iterVar} = ${JSON.stringify(previousValue)}`);
+            }
+        } catch (e) {
+            console.warn('Could not restore loop variable:', e);
+        }
+    }
+
+    if (stepData.type === 'loop-block') {
+        if (stepData.glassCreated || stepData.engineCreated) {
+            const frame = loopVisualStack.pop();
+            if (frame?.glassState) {
+                await dissolveGlassPane(frame.glassState.glassPaneEl, editor,
+                    frame.glassState.frostedMarks, frame.glassState.activeLoopMarks);
+            }
+            if (frame?.engineRef) {
+                await removeEngineBox(frame.engineRef);
+            }
+        }
+
+        const top = loopVisualStack[loopVisualStack.length - 1] || null;
+        glassState = top ? top.glassState : null;
+        engineRef = top ? top.engineRef : null;
+        if (stepData.pausedOuter) resumeLoopVisuals();
+    }
+
+    if ((stepData.type === 'loop-exit' || stepData.type === 'loop-break') && stepData.loopMeta) {
+        const loopMeta = stepData.loopMeta;
+        const loopRange = getLoopBodyRange(loopMeta);
+        const depth = stepData.depth || getLoopDepth();
+
+        if (loopVisualStack.length > 0) pauseLoopVisuals();
+
+        let newEngineRef = null;
+        if (loopMeta.type === 'for') {
+            const items = await getIterableItems(loopMeta.iterableExpr);
+            newEngineRef = injectEngineBox(editor, 'for', loopMeta.headerLine, {
+                iterVar: loopMeta.iterVar,
+                iterableName: loopMeta.iterableExpr,
+                items
+            }, depth);
+        } else if (loopMeta.type === 'while') {
+            newEngineRef = injectEngineBox(editor, 'while', loopMeta.headerLine, {
+                condition: loopMeta.condition || ''
+            }, depth);
+        }
+
+        const newGlassState = showGlassPane(editor, loopMeta.headerLine, loopRange.endLine, depth);
+        loopVisualStack.push({ loopMeta, glassState: newGlassState, engineRef: newEngineRef, depth });
+
+        glassState = newGlassState;
+        engineRef = newEngineRef;
+        updateActiveLine(editor, loopMeta.headerLine, newGlassState?.cursorEl || null);
     }
 }
 
@@ -2283,10 +3016,20 @@ document.getElementById('backBtn').onclick = async () => {
             stepUnderReview.numInjected = 0;
             totalSteps = executionPlan.length;
         }
+        if (stepUnderReview.type === 'loop-block' && stepUnderReview.numInjected > 0) {
+            executionPlan.splice(currentStep + 1, stepUnderReview.numInjected);
+            stepUnderReview.numInjected = 0;
+            totalSteps = executionPlan.length;
+        }
 
         const lastListData = listStepHistory.pop();
         if (lastListData) {
             await undoListStep(lastListData);
+        }
+
+        const lastLoopData = loopStepHistory.pop();
+        if (lastLoopData) {
+            await undoLoopStep(lastLoopData);
         }
 
         reverseLastAnimation();
@@ -2332,8 +3075,16 @@ document.getElementById('resetBtn').onclick = () => location.reload();
 // ============ HELPERS ============
 function highlightLine(lineNum) {
     if (currentLineMarker) currentLineMarker.clear();
-    currentLineMarker = editor.markText({ line: lineNum, ch: 0 }, { line: lineNum, ch: editor.getLine(lineNum).length }, { className: 'CodeMirror-activeline-background' });
+    currentLineMarker = editor.markText({ line: lineNum, ch: 0 }, { line: lineNum, ch: editor.getLine(lineNum).length }, { className: 'step-line-highlight' });
     editor.scrollIntoView({ line: lineNum, ch: 0 }, 50);
+
+    const topFrame = loopVisualStack[loopVisualStack.length - 1];
+    if (topFrame?.loopMeta && glassState?.cursorEl) {
+        const range = getLoopBodyRange(topFrame.loopMeta);
+        if (lineNum >= range.startLine && lineNum <= range.endLine) {
+            updateActiveLine(editor, lineNum, glassState.cursorEl);
+        }
+    }
 }
 
 function highlightErrorLine(lineNum) {
@@ -2373,9 +3124,6 @@ function updateButtons() {
                 }
             }
         }, 5000);
-
-        editor.setOption("readOnly", false);
-        document.getElementById('runBtn').disabled = false;
     } else if (currentStep < totalSteps) {
         isCompleted = false;
     }
@@ -2387,19 +3135,122 @@ function updateButtons() {
 
 // ============ RECURSIVE EXECUTION PLAN BUILDER ============
 function buildExecutionPlan(lines, startIdx = 0, baseIndent = 0) {
+    const getIndentWidth = (text) => {
+        const m = text.match(/^(\s*)/);
+        if (!m) return 0;
+        let width = 0;
+        for (const ch of m[1]) {
+            width += ch === '\t' ? 4 : 1;
+        }
+        return width;
+    };
+
+    const stripInlineComment = (text) => {
+        let inSingle = false;
+        let inDouble = false;
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (ch === "'" && !inDouble) inSingle = !inSingle;
+            else if (ch === '"' && !inSingle) inDouble = !inDouble;
+            else if (ch === '#' && !inSingle && !inDouble) {
+                return text.slice(0, i);
+            }
+        }
+        return text;
+    };
+
     const plan = [];
     let i = startIdx;
 
     while (i < lines.length) {
         const line = lines[i];
-        const trimmed = line.trim();
+        const strippedLine = stripInlineComment(line);
+        const trimmed = strippedLine.trim();
 
         if (!trimmed || trimmed.startsWith('#')) { i++; continue; }
 
-        const indent = line.match(/^(\s*)/)[1].length;
+        const indent = getIndentWidth(line);
         if (indent < baseIndent) break;
 
-        if (indent === baseIndent && trimmed.match(/^if\b/)) {
+        if (indent === baseIndent && trimmed.match(/^for\b/)) {
+            const forMatch = trimmed.match(/^for\s+(\w+)\s+in\s+(.+)\s*:/);
+            const iterVar = forMatch ? forMatch[1] : null;
+            const iterableExpr = forMatch ? forMatch[2].trim() : null;
+
+            // Find first body line indent
+            let bodyStart = i + 1;
+            while (bodyStart < lines.length) {
+                const bodyTrimmed = stripInlineComment(lines[bodyStart]).trim();
+                if (bodyTrimmed && !bodyTrimmed.startsWith('#')) break;
+                bodyStart++;
+            }
+
+            let bodyPlan = [];
+            let newI = bodyStart;
+            let bodyEndLine = i;
+
+            if (bodyStart < lines.length) {
+                const bodyIndent = getIndentWidth(lines[bodyStart]);
+                if (bodyIndent > baseIndent) {
+                    const subRes = buildExecutionPlan(lines, bodyStart, bodyIndent);
+                    bodyPlan = subRes.plan;
+                    newI = subRes.newI;
+                    bodyEndLine = subRes.newI - 1;
+                }
+            }
+
+            plan.push({
+                lineNumber: i,
+                code: line,
+                type: 'loop-block',
+                loopMeta: {
+                    type: 'for',
+                    headerLine: i,
+                    iterVar,
+                    iterableExpr,
+                    bodyPlan,
+                    endLine: bodyEndLine
+                }
+            });
+            i = newI;
+        } else if (indent === baseIndent && trimmed.match(/^while\b/)) {
+            const whileMatch = trimmed.match(/^while\s+(.+)\s*:/);
+            const condition = whileMatch ? whileMatch[1].trim() : null;
+
+            let bodyStart = i + 1;
+            while (bodyStart < lines.length) {
+                const bodyTrimmed = stripInlineComment(lines[bodyStart]).trim();
+                if (bodyTrimmed && !bodyTrimmed.startsWith('#')) break;
+                bodyStart++;
+            }
+
+            let bodyPlan = [];
+            let newI = bodyStart;
+            let bodyEndLine = i;
+            if (bodyStart < lines.length) {
+                const bodyIndent = getIndentWidth(lines[bodyStart]);
+                if (bodyIndent > baseIndent) {
+                    const subRes = buildExecutionPlan(lines, bodyStart, bodyIndent);
+                    bodyPlan = subRes.plan;
+                    newI = subRes.newI;
+                    bodyEndLine = subRes.newI - 1;
+                }
+            }
+
+            plan.push({
+                lineNumber: i,
+                code: line,
+                type: 'loop-block',
+                loopMeta: {
+                    type: 'while',
+                    headerLine: i,
+                    condition,
+                    bodyPlan,
+                    endLine: bodyEndLine
+                }
+            });
+            i = newI;
+        } else if (indent === baseIndent && trimmed.match(/^if\b/)) {
             const ifStructure = { hasIf: true, startLine: i, conditions: [] };
             let currentType = 'if';
             let currentCond = trimmed.replace(/^if\b/, '').replace(/:$/, '').trim();
@@ -2408,11 +3259,15 @@ function buildExecutionPlan(lines, startIdx = 0, baseIndent = 0) {
 
             while (i < lines.length) {
                 let peek = i;
-                while (peek < lines.length && (!lines[peek].trim() || lines[peek].trim().startsWith('#'))) peek++;
+                while (peek < lines.length) {
+                    const peekTrim = stripInlineComment(lines[peek]).trim();
+                    if (peekTrim && !peekTrim.startsWith('#')) break;
+                    peek++;
+                }
                 if (peek >= lines.length) { i = peek; break; }
 
-                const peekIndent = lines[peek].match(/^(\s*)/)[1].length;
-                const peekTrimmed = lines[peek].trim();
+                const peekIndent = getIndentWidth(lines[peek]);
+                const peekTrimmed = stripInlineComment(lines[peek]).trim();
 
                 if (peekIndent > baseIndent) {
                     // Sub-block — collect recursively
@@ -2425,7 +3280,8 @@ function buildExecutionPlan(lines, startIdx = 0, baseIndent = 0) {
                             code: s.code,
                             lineNum: s.lineNumber,
                             type: s.type,
-                            ifStructure: s.ifStructure
+                            ifStructure: s.ifStructure,
+                            loopMeta: s.loopMeta
                         }))
                     });
                     i = subRes.newI;
@@ -2456,6 +3312,16 @@ function buildExecutionPlan(lines, startIdx = 0, baseIndent = 0) {
             ifStructure.endLine = i - 1;
             plan.push({ lineNumber: ifStructure.startLine, code: lines[ifStructure.startLine], type: 'if-block', ifStructure });
         } else {
+            if (indent === baseIndent && trimmed.match(/^break\b/)) {
+                plan.push({ lineNumber: i, code: line, type: 'loop-break' });
+                i++;
+                continue;
+            }
+            if (indent === baseIndent && trimmed.match(/^continue\b/)) {
+                plan.push({ lineNumber: i, code: line, type: 'loop-continue' });
+                i++;
+                continue;
+            }
             plan.push({
                 lineNumber: i,
                 code: line,
@@ -2835,8 +3701,8 @@ async function evaluateConditionExpression(expr) {
         const res = await pyodide.runPythonAsync(`bool(${expr})`);
         return res;
     } catch (e) {
-        console.error('Eval error:', e);
-        return false;
+        const message = e?.message || String(e);
+        throw makeHandledError(message, e);
     }
 }
 
@@ -2884,13 +3750,17 @@ async function executeIfStep(step) {
         if (chosenBranch >= 0) {
             const chosenBlock = step.ifStructure.conditions[chosenBranch].block;
             const chosenCondition = step.ifStructure.conditions[chosenBranch];
+            const branchLines = chosenBlock.map(blockItem => ({
+                code: blockItem.code,
+                lineNumber: blockItem.lineNum,
+                type: blockItem.type,
+                ifStructure: blockItem.ifStructure,
+                loopMeta: blockItem.loopMeta
+            }));
+            const enclosingLoop = getTargetLoopMeta(step);
+            if (enclosingLoop) annotateLoopSteps(branchLines, enclosingLoop);
             return {
-                branchLines: chosenBlock.map(blockItem => ({
-                    code: blockItem.code,
-                    lineNumber: blockItem.lineNum,
-                    type: blockItem.type,
-                    ifStructure: blockItem.ifStructure
-                })),
+                branchLines,
                 // PHASE 2: Track which condition was chosen for narration
                 chosenBranchIndex: chosenBranch,
                 chosenConditionType: chosenCondition.type,
@@ -2911,8 +3781,17 @@ async function executeIfStep(step) {
             if (cb >= 0) {
                 const bl = step.ifStructure.conditions[cb].block;
                 const cond = step.ifStructure.conditions[cb];
+                const branchLines = bl.map(i => ({
+                    code: i.code,
+                    lineNumber: i.lineNum,
+                    type: i.type,
+                    ifStructure: i.ifStructure,
+                    loopMeta: i.loopMeta
+                }));
+                const enclosingLoop = getTargetLoopMeta(step);
+                if (enclosingLoop) annotateLoopSteps(branchLines, enclosingLoop);
                 return {
-                    branchLines: bl.map(i => ({ code: i.code, lineNumber: i.lineNum, type: i.type, ifStructure: i.ifStructure })),
+                    branchLines,
                     chosenBranchIndex: cb,
                     chosenConditionType: cond.type,
                     chosenConditionExpr: cond.condition,

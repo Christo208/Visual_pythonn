@@ -28,7 +28,7 @@ window.onload = async () => {
         mode: "python",
         theme: "monokai",
         lineNumbers: true,
-        readOnly: false
+        readOnly: "nocursor"
     });
     
     editor.setValue('message = "Keep Smiling"\nprint(message)\nuserNo = 101\nprint("User Number is", userNo)');
@@ -166,7 +166,7 @@ document.getElementById('runBtn').onclick = async () => {
     } catch (error) {
         await generateErrorExplanation(error, code);
         isRunning = false;
-        editor.setOption("readOnly", false);
+        editor.setOption("readOnly", "nocursor");
         document.getElementById('runBtn').disabled = false;
     }
 };
@@ -646,7 +646,7 @@ function updateButtons() {
     
     if (currentStep >= totalSteps) {
         showTeacher("🎉 Excellent! You've seen how Python stores and uses variables! Try changing the values and running again.");
-        editor.setOption("readOnly", false);
+        editor.setOption("readOnly", "nocursor");
         document.getElementById('runBtn').disabled = false;
         isRunning = false;
     }

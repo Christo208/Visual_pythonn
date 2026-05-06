@@ -235,10 +235,10 @@ Mode: ${mode === 'solution' ? 'SOLUTION (using int() for number conversion)' : '
 Generate a JSON object with ONE explanation per line of code (inside an "explanations" array).
 
 CRITICAL RULES:
-1. Use {{PLACEHOLDERS}} for unknown runtime values:
-   - {{USER_INPUT_0}}, {{USER_INPUT_1}}, {{USER_INPUT_2}} for input() calls (in order they appear)
-   - {{VAR_NAME}} for variable values (e.g., {{a}}, {{b}}, {{c}})
-   - {{RESULT}} for calculation results
+1. Use {{PLACEHOLDERS}} ONLY for values that the frontend can hydrate:
+    - {{USER_INPUT_0}}, {{USER_INPUT_1}}, {{USER_INPUT_2}} for input() calls (in order they appear)
+    - {{VAR_NAME}} for actual variable names that appear in the code (e.g., {{a}}, {{b}}, {{total}}, {{colors}})
+    - DO NOT invent placeholders like {{RESULT}}, {{colors_list_value}}, {{first_color_value}}
 
 2. Reference previous steps naturally:
    - "Remember you typed {{USER_INPUT_0}}..."

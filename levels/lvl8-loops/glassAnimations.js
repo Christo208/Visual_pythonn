@@ -13,7 +13,7 @@
  * @param {number} loopEndLine - Last line of the loop body
  * @returns {object} { glassPaneEl, frostedMarks, activeLoopMarks } for later cleanup
  */
-export function showGlassPane(editor, loopStartLine, loopEndLine) {
+export function showGlassPane(editor, loopStartLine, loopEndLine, depth = 1) {
     const totalLines = editor.lineCount();
 
     // Add frosted class to lines OUTSIDE the loop
@@ -40,6 +40,7 @@ export function showGlassPane(editor, loopStartLine, loopEndLine) {
 
     const glassPaneEl = document.createElement('div');
     glassPaneEl.className = 'loop-glass-pane';
+    if (depth >= 2) glassPaneEl.classList.add(`depth-${Math.min(depth, 3)}`);
     glassPaneEl.style.top = `${startCoords.top}px`;
     glassPaneEl.style.left = '0';
     glassPaneEl.style.right = '0';
@@ -51,21 +52,21 @@ export function showGlassPane(editor, loopStartLine, loopEndLine) {
         sizer.style.position = 'relative';
         sizer.appendChild(glassPaneEl);
 
-        // Active line cursor
-        const existingCursor = document.getElementById('loopActiveCursor');
-        if (existingCursor) existingCursor.remove();
+        // Active line cursor (scoped to this glass pane)
         const cursorEl = document.createElement('div');
         cursorEl.className = 'loop-active-cursor';
-        cursorEl.id = 'loopActiveCursor';
         cursorEl.style.opacity = '0';
         sizer.appendChild(cursorEl);
+
+        // Attach for cleanup
+        glassPaneEl._cursorEl = cursorEl;
     }
 
     // Fade in
     glassPaneEl.style.opacity = '0';
     gsap.to(glassPaneEl, { opacity: 1, duration: 0.5, ease: 'power2.out' });
 
-    return { glassPaneEl, frostedMarks, activeLoopMarks };
+    return { glassPaneEl, frostedMarks, activeLoopMarks, cursorEl: glassPaneEl._cursorEl || null };
 }
 
 /**
@@ -105,18 +106,18 @@ export function dissolveGlassPane(glassPaneEl, editor, frostedMarks, activeLoopM
             if (glassPaneEl.parentNode) {
                 glassPaneEl.parentNode.removeChild(glassPaneEl);
             }
-            const cursorEl = document.getElementById('loopActiveCursor');
-            if (cursorEl) cursorEl.remove();
+            const cursorEl = glassPaneEl._cursorEl || null;
+            if (cursorEl && cursorEl.parentNode) cursorEl.parentNode.removeChild(cursorEl);
             resolve();
         }, 800);
     });
 }
 
-export function updateActiveLine(editor, lineNum) {
-    const cursorEl = document.getElementById('loopActiveCursor');
-    if (!cursorEl) return;
+export function updateActiveLine(editor, lineNum, cursorEl = null) {
+    const targetCursor = cursorEl || document.querySelector('.loop-active-cursor:last-of-type');
+    if (!targetCursor) return;
     if (lineNum === null) {
-        cursorEl.style.opacity = '0';
+        targetCursor.style.opacity = '0';
         return;
     }
 
@@ -125,9 +126,9 @@ export function updateActiveLine(editor, lineNum) {
     const coords = editor.charCoords({ line: lineNum, ch: 0 }, 'window');
     const lineH = editor.defaultTextHeight();
 
-    cursorEl.style.top = (coords.top - wrapRect.top) + 'px';
-    cursorEl.style.height = lineH + 'px';
-    cursorEl.style.opacity = '1';
+    targetCursor.style.top = (coords.top - wrapRect.top) + 'px';
+    targetCursor.style.height = lineH + 'px';
+    targetCursor.style.opacity = '1';
 }
 
 
@@ -143,11 +144,12 @@ export function updateActiveLine(editor, lineNum) {
  *   For 'while': { condition: string }
  * @returns {object} { widget, element } — the CM widget ref and DOM element
  */
-export function injectEngineBox(editor, loopType, loopHeaderLine, config) {
+export function injectEngineBox(editor, loopType, loopHeaderLine, config, depth = 1) {
     const engineEl = document.createElement('div');
 
     if (loopType === 'for') {
         engineEl.className = 'engine-box engine-box-for';
+        if (depth >= 2) engineEl.classList.add(`depth-${Math.min(depth, 3)}`);
         engineEl.innerHTML = `
             <div class="engine-box-header">🔄 For-Loop Engine</div>
             <div class="engine-box-row">
@@ -165,6 +167,7 @@ export function injectEngineBox(editor, loopType, loopHeaderLine, config) {
         `;
     } else {
         engineEl.className = 'engine-box engine-box-while';
+        if (depth >= 2) engineEl.classList.add(`depth-${Math.min(depth, 3)}`);
         engineEl.innerHTML = `
             <div class="engine-box-header">⚡ While-Loop Engine</div>
             <div class="engine-box-row">
@@ -297,7 +300,7 @@ export function removeEngineBox(widgetRef) {
  * @param {number} toLine - Loop header line (where arrow lands)
  * @returns {Promise} Resolves when animation completes
  */
-export function animateLoopBack(editor, fromLine, toLine) {
+export function animateLoopBack(editor, fromLine, toLine, depth = 1) {
     return new Promise(resolve => {
         const wrapper = editor.getWrapperElement();
         const gutterEl = wrapper.querySelector('.CodeMirror-gutters');
@@ -318,6 +321,7 @@ export function animateLoopBack(editor, fromLine, toLine) {
         // Create SVG for the arrow
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('class', 'loop-back-arrow');
+        if (depth >= 2) svg.classList.add(`depth-${Math.min(depth, 3)}`);
         svg.style.position = 'absolute';
         svg.style.left = '0';
         svg.style.top = '0';
@@ -413,5 +417,218 @@ export function animateLoopBack(editor, fromLine, toLine) {
 
         // Hold briefly
         tl.to({}, { duration: 0.2 });
+    });
+}
+
+
+// ============ BREAK ARROW ============
+
+/**
+ * Animates a red arrow arcing LEFT then shooting DOWN-OUT of the glass pane.
+ * Called when a `break` statement is hit.
+ * @param {CodeMirror} editor
+ * @param {number} fromLine - The line containing `break`
+ * @param {number} loopBodyEndLine - Last line of the loop body
+ * @returns {Promise}
+ */
+export function animateBreakArrow(editor, fromLine, loopBodyEndLine) {
+    return new Promise(resolve => {
+        const wrapper = editor.getWrapperElement();
+        const gutterEl = wrapper.querySelector('.CodeMirror-gutters');
+        if (!gutterEl) { resolve(); return; }
+
+        const gutterWidth = gutterEl.getBoundingClientRect().width;
+        const fromCoords = editor.charCoords({ line: fromLine, ch: 0 }, 'local');
+        const endCoords  = editor.charCoords({ line: loopBodyEndLine, ch: 0 }, 'local');
+        const lineHeight = editor.defaultTextHeight();
+
+        const startY = fromCoords.top + lineHeight / 2;
+        const exitY  = endCoords.top + lineHeight + 24; // below glass pane
+        const lineX  = gutterWidth - 10;
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'loop-back-arrow loop-break-arrow');
+        svg.style.cssText = `position:absolute;left:0;overflow:visible;pointer-events:none;z-index:15;`;
+        svg.style.top    = `${startY - 10}px`;
+        svg.style.width  = `${gutterWidth + 50}px`;
+        svg.style.height = `${exitY - startY + 50}px`;
+
+        const relStartY = 10;
+        const relEndY   = exitY - startY + 20;
+
+        // Arc left then curve down-and-right to exit below glass pane
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const d = `M ${lineX} ${relStartY} C -20 ${relStartY}, -20 ${relEndY}, ${lineX + 30} ${relEndY}`;
+        path.setAttribute('d', d);
+        path.setAttribute('stroke', '#ef4444');
+        path.setAttribute('stroke-width', '3');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('filter', 'drop-shadow(0 0 8px rgba(239,68,68,0.9))');
+
+        // Arrowhead pointing right
+        const ah = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        const ax = lineX + 30, ay = relEndY, as_ = 8;
+        ah.setAttribute('points', `${ax + as_},${ay} ${ax},${ay - as_} ${ax},${ay + as_}`);
+        ah.setAttribute('fill', '#ef4444');
+        ah.setAttribute('opacity', '0');
+        ah.setAttribute('filter', 'drop-shadow(0 0 6px rgba(239,68,68,0.9))');
+
+        svg.appendChild(path);
+        svg.appendChild(ah);
+
+        const sizer = wrapper.querySelector('.CodeMirror-sizer');
+        if (sizer) { sizer.style.position = 'relative'; sizer.appendChild(svg); }
+
+        const len = path.getTotalLength();
+        path.style.strokeDasharray  = len;
+        path.style.strokeDashoffset = len;
+
+        const tl = gsap.timeline({
+            onComplete: () => {
+                gsap.to(svg, {
+                    opacity: 0, duration: 0.35,
+                    onComplete: () => { if (svg.parentNode) svg.parentNode.removeChild(svg); resolve(); }
+                });
+            }
+        });
+        tl.to(path, { strokeDashoffset: 0, duration: 0.7, ease: 'power2.inOut' });
+        tl.to(ah,   { opacity: 1, duration: 0.2 }, 0.6);
+        tl.to({},   { duration: 0.35 });
+    });
+}
+
+
+// ============ ENGINE DISINTEGRATE ============
+
+/**
+ * Destroys the engine box with a dramatic shudder → red-flash → shatter sequence.
+ * Used in place of removeEngineBox when a `break` occurs.
+ * @param {object} widgetRef - { widget, element } from injectEngineBox
+ * @returns {Promise}
+ */
+export function disintegrateEngineBox(widgetRef) {
+    return new Promise(resolve => {
+        if (!widgetRef || !widgetRef.widget) { resolve(); return; }
+
+        const el = widgetRef.element;
+
+        const tl = gsap.timeline({
+            onComplete: () => {
+                try { widgetRef.widget.clear(); } catch (e) { /* ignore */ }
+                resolve();
+            }
+        });
+
+        // 1. Rapid shudder
+        tl.to(el, { x: -5, duration: 0.05, ease: 'none' })
+          .to(el, { x:  5, duration: 0.05, ease: 'none' })
+          .to(el, { x: -5, duration: 0.05, ease: 'none' })
+          .to(el, { x:  5, duration: 0.05, ease: 'none' })
+          .to(el, { x:  0, duration: 0.05, ease: 'none' });
+
+        // 2. Red border flash
+        tl.call(() => {
+            el.style.borderColor = '#ef4444';
+            el.style.boxShadow   = '0 0 24px rgba(239,68,68,0.85), inset 0 0 12px rgba(239,68,68,0.3)';
+        });
+        tl.to({}, { duration: 0.22 });
+
+        // 3. Shatter — expand then collapse with blur
+        tl.to(el, { scale: 1.12, duration: 0.1, ease: 'power1.out' })
+          .to(el, { scale: 0, opacity: 0, filter: 'blur(10px)', duration: 0.45, ease: 'power3.in' });
+    });
+}
+
+
+// ============ CONTINUE ARROW ============
+
+/**
+ * Animates an amber arc arrow from `fromLine` back up to `toLine` (the loop header).
+ * Visually identical to animateLoopBack but uses amber (#f59e0b) colouring.
+ * @param {CodeMirror} editor
+ * @param {number} fromLine - Line containing `continue`
+ * @param {number} toLine   - Loop header line
+ * @returns {Promise}
+ */
+export function animateContinueArrow(editor, fromLine, toLine) {
+    return new Promise(resolve => {
+        const wrapper = editor.getWrapperElement();
+        const gutterEl = wrapper.querySelector('.CodeMirror-gutters');
+        if (!gutterEl) { resolve(); return; }
+
+        const gutterWidth = gutterEl.getBoundingClientRect().width;
+        const fromCoords  = editor.charCoords({ line: fromLine, ch: 0 }, 'local');
+        const toCoords    = editor.charCoords({ line: toLine,   ch: 0 }, 'local');
+        const lineHeight  = editor.defaultTextHeight();
+
+        const startY = fromCoords.top + lineHeight / 2;
+        const endY   = toCoords.top   + lineHeight / 2;
+        const lineX  = gutterWidth - 10;
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'loop-back-arrow loop-continue-arrow');
+        svg.style.cssText = `position:absolute;left:0;overflow:visible;pointer-events:none;z-index:10;`;
+
+        const svgTop = Math.min(startY, endY) - 20;
+        svg.style.top    = `${svgTop}px`;
+        svg.style.width  = `${gutterWidth + 10}px`;
+        svg.style.height = `${Math.abs(startY - endY) + lineHeight + 40}px`;
+
+        const relStartY = startY - svgTop;
+        const relEndY   = endY   - svgTop;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', `M ${lineX} ${relStartY} C -15 ${relStartY}, -15 ${relEndY}, ${lineX} ${relEndY}`);
+        path.setAttribute('stroke', '#f59e0b');
+        path.setAttribute('stroke-width', '2.5');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('filter', 'drop-shadow(0 0 6px rgba(245,158,11,0.8))');
+
+        const arrowSize = 8;
+        const ah = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        ah.setAttribute('points', `${lineX},${relEndY - arrowSize} ${lineX + arrowSize},${relEndY} ${lineX},${relEndY + arrowSize}`);
+        ah.setAttribute('fill', '#f59e0b');
+        ah.setAttribute('opacity', '0');
+        ah.setAttribute('filter', 'drop-shadow(0 0 6px rgba(245,158,11,0.8))');
+
+        svg.appendChild(path);
+        svg.appendChild(ah);
+
+        const sizer = wrapper.querySelector('.CodeMirror-sizer');
+        if (sizer) { sizer.style.position = 'relative'; sizer.appendChild(svg); }
+
+        const len = path.getTotalLength();
+        path.style.strokeDasharray  = len;
+        path.style.strokeDashoffset = len;
+
+        const tl = gsap.timeline({
+            onComplete: () => {
+                for (let i = fromLine; i >= toLine; i--) {
+                    editor.removeLineClass(i, 'wrap', 'line-continue-sweep');
+                }
+                gsap.to(svg, {
+                    opacity: 0, duration: 0.3,
+                    onComplete: () => { if (svg.parentNode) svg.parentNode.removeChild(svg); resolve(); }
+                });
+            }
+        });
+
+        tl.to(path, { strokeDashoffset: 0, duration: 0.6, ease: 'power1.inOut' });
+
+        // Amber sweep upward
+        const linesToSweep  = fromLine - toLine;
+        const sweepInterval = linesToSweep > 0 ? 0.6 / linesToSweep : 0.1;
+        for (let i = fromLine; i >= toLine; i--) {
+            const delay = (fromLine - i) * sweepInterval;
+            tl.call(() => {
+                editor.addLineClass(i, 'wrap', 'line-continue-sweep');
+                setTimeout(() => editor.removeLineClass(i, 'wrap', 'line-continue-sweep'), 200);
+            }, null, delay);
+        }
+
+        tl.to(ah, { opacity: 1, duration: 0.2 }, 0.5);
+        tl.to({},  { duration: 0.2 });
     });
 }

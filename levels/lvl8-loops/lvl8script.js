@@ -20,7 +20,10 @@ import {
     updateWhileEngine,
     removeEngineBox,
     animateLoopBack,
-    updateActiveLine
+    updateActiveLine,
+    animateBreakArrow,
+    disintegrateEngineBox,
+    animateContinueArrow
 } from './glassAnimations.js';
 
 // ============ GLOBAL VARIABLES ============
@@ -57,7 +60,17 @@ for fruit in fruits:
     'while': `i = 1
 while i <= 3:
     print(i)
-    i = i + 1`
+    i = i + 1`,
+
+    'for-break': `nums = [1, 2, 3, 4, 5]
+for n in nums:
+    print(n)
+    break`,
+
+    'for-continue': `nums = [1, 2, 3]
+for n in nums:
+    continue
+    print(n)`
 };
 
 // ============ INITIALIZATION ============
@@ -66,7 +79,7 @@ window.onload = async () => {
         mode: "python",
         theme: "monokai",
         lineNumbers: true,
-        readOnly: false
+        readOnly: "nocursor"
     });
 
     editor.setValue(tabTemplates['for-list']);
@@ -332,6 +345,7 @@ function buildExecutionPlan(code) {
         });
 
         // Generate steps for each iteration
+        let forLoopBroken = false;
         for (let idx = 0; idx < items.length; idx++) {
             // Loop-assign: assign current item to iterator variable
             steps.push({
@@ -344,39 +358,56 @@ function buildExecutionPlan(code) {
             });
 
             // Body lines for this iteration
+            let didBreak = false;
+            let didContinue = false;
             for (const bLine of bodyLines) {
                 const trimmed = codeLines[bLine].trim();
-                if (trimmed.startsWith('print(')) {
+                if (trimmed === 'break') {
+                    steps.push({
+                        lineNumber: bLine, code: 'break', type: 'loop-break',
+                        loopEndLine: bodyLines[bodyLines.length - 1],
+                        loopHeaderLine: loopInfo.headerLine
+                    });
+                    didBreak = true;
+                    break;
+                } else if (trimmed === 'continue') {
+                    steps.push({
+                        lineNumber: bLine, code: 'continue', type: 'loop-continue',
+                        toLine: loopInfo.headerLine
+                    });
+                    didContinue = true;
+                    break;
+                } else if (trimmed.startsWith('print(')) {
                     steps.push({ lineNumber: bLine, code: trimmed, type: 'print' });
                 } else if (trimmed.match(/^\w+\s*=\s*.+/)) {
                     steps.push({ lineNumber: bLine, code: trimmed, type: 'assignment' });
                 }
             }
 
-            // Loop-back arrow (except after last iteration — we do a final loop-back before exit)
-            if (idx < items.length - 1) {
+            if (didBreak) { forLoopBroken = true; break; }
+
+            // Normal loop-back between iterations (skip if continue — continue arrow IS the arc)
+            if (!didContinue && idx < items.length - 1) {
                 steps.push({
                     lineNumber: bodyLines[bodyLines.length - 1],
-                    code: 'loop-back',
-                    type: 'loop-back',
+                    code: 'loop-back', type: 'loop-back',
                     toLine: loopInfo.headerLine
                 });
             }
         }
 
-        // Final loop-back + loop-exit after last iteration
-        steps.push({
-            lineNumber: bodyLines[bodyLines.length - 1],
-            code: 'loop-back',
-            type: 'loop-back',
-            toLine: loopInfo.headerLine
-        });
-
-        steps.push({
-            lineNumber: loopInfo.headerLine,
-            code: 'loop-exit',
-            type: 'loop-exit'
-        });
+        if (!forLoopBroken) {
+            // Final loop-back + loop-exit after last iteration
+            steps.push({
+                lineNumber: bodyLines[bodyLines.length - 1],
+                code: 'loop-back', type: 'loop-back',
+                toLine: loopInfo.headerLine
+            });
+            steps.push({
+                lineNumber: loopInfo.headerLine,
+                code: 'loop-exit', type: 'loop-exit'
+            });
+        }
 
     } else if (loopInfo.type === 'while') {
         // Simulate the while-loop logic in JS
@@ -445,6 +476,7 @@ function buildExecutionPlan(code) {
         let maxIterations = 100; // safety cap
         let iteration = 0;
 
+        let whileLoopBroken = false;
         while (evalCondition(counterValue) && iteration < maxIterations) {
             // While-check: TRUE
             const condStr = conditionRaw.replace(new RegExp(`\\b${counterVar}\\b`, 'g'), String(counterValue));
@@ -457,55 +489,66 @@ function buildExecutionPlan(code) {
             });
 
             // Body lines
+            let didBreak_w = false;
+            let didContinue_w = false;
             for (const bLine of bodyLines) {
                 const trimmed = codeLines[bLine].trim();
-                if (trimmed.startsWith('print(')) {
+                if (trimmed === 'break') {
+                    steps.push({
+                        lineNumber: bLine, code: 'break', type: 'loop-break',
+                        loopEndLine: bodyLines[bodyLines.length - 1],
+                        loopHeaderLine: loopInfo.headerLine
+                    });
+                    didBreak_w = true;
+                    break;
+                } else if (trimmed === 'continue') {
+                    steps.push({
+                        lineNumber: bLine, code: 'continue', type: 'loop-continue',
+                        toLine: loopInfo.headerLine
+                    });
+                    didContinue_w = true;
+                    break;
+                } else if (trimmed.startsWith('print(')) {
                     steps.push({ lineNumber: bLine, code: trimmed, type: 'print' });
                 } else if (trimmed.match(/^\w+\s*=\s*.+/)) {
                     steps.push({ lineNumber: bLine, code: trimmed, type: 'assignment' });
                 }
             }
 
-            // Simulate the increment
+            if (didBreak_w) { whileLoopBroken = true; break; }
+
+            // Always simulate increment (handles continue templates where increment precedes continue)
             if (incrementExpr) {
-                // Parse simple expressions like "i + 1", "i - 1", "i * 2"
                 const simpleInc = incrementExpr.match(/(\w+)\s*([+\-*])\s*(\d+)/);
                 if (simpleInc) {
-                    const op = simpleInc[2];
-                    const val = parseInt(simpleInc[3]);
+                    const op = simpleInc[2], val = parseInt(simpleInc[3]);
                     if (op === '+') counterValue += val;
                     else if (op === '-') counterValue -= val;
                     else if (op === '*') counterValue *= val;
                 }
             }
 
-            // Loop-back arrow
-            steps.push({
-                lineNumber: bodyLines[bodyLines.length - 1],
-                code: 'loop-back',
-                type: 'loop-back',
-                toLine: loopInfo.headerLine
-            });
+            // Loop-back only for normal iterations (continue arrow IS the arc)
+            if (!didContinue_w) {
+                steps.push({
+                    lineNumber: bodyLines[bodyLines.length - 1],
+                    code: 'loop-back', type: 'loop-back',
+                    toLine: loopInfo.headerLine
+                });
+            }
 
             iteration++;
         }
 
-        // Final while-check: FALSE
-        const finalCondStr = conditionRaw.replace(new RegExp(`\\b${counterVar}\\b`, 'g'), String(counterValue));
-        steps.push({
-            lineNumber: loopInfo.headerLine,
-            code: finalCondStr,
-            type: 'while-check',
-            conditionStr: finalCondStr,
-            conditionResult: false
-        });
-
-        // Loop-exit
-        steps.push({
-            lineNumber: loopInfo.headerLine,
-            code: 'loop-exit',
-            type: 'loop-exit'
-        });
+        if (!whileLoopBroken) {
+            // Final while-check: FALSE
+            const finalCondStr = conditionRaw.replace(new RegExp(`\\b${counterVar}\\b`, 'g'), String(counterValue));
+            steps.push({
+                lineNumber: loopInfo.headerLine, code: finalCondStr,
+                type: 'while-check', conditionStr: finalCondStr, conditionResult: false
+            });
+            steps.push({ lineNumber: loopInfo.headerLine, code: 'loop-exit', type: 'loop-exit' });
+        }
     }
 
     console.log(`📋 Static plan built: ${steps.length} steps`, steps);
@@ -525,17 +568,19 @@ function generateFallbackExplanations(steps) {
 
 function getFallbackText(step) {
     switch (step.type) {
-        case 'list-assign': return `Python creates a list and stores it in memory.`;
-        case 'loop-enter': return `We are inside the loop now. Everything outside is on pause.`;
-        case 'loop-assign': return `The loop picks '${step.iterValue}' from the iterable and assigns it to '${step.iterVar}'.`;
-        case 'while-check': return step.conditionResult ?
-            `The condition ${step.conditionStr} is TRUE — the loop body executes again.` :
-            `The condition ${step.conditionStr} is FALSE — the loop ends!`;
-        case 'print': return `Python displays the value on the screen!`;
-        case 'assignment': return `Python executes: ${step.code}`;
-        case 'loop-back': return `The loop body is done — jumping back to the top!`;
-        case 'loop-exit': return `Loop complete! The world comes back into focus.`;
-        default: return `Executing: ${step.code}`;
+        case 'list-assign':   return `Python creates a list and stores it in memory.`;
+        case 'loop-enter':    return `We are inside the loop now. Everything outside is on pause.`;
+        case 'loop-assign':   return `The loop picks '${step.iterValue}' from the iterable and assigns it to '${step.iterVar}'.`;
+        case 'while-check':   return step.conditionResult
+            ? `The condition ${step.conditionStr} is TRUE — the loop body executes again.`
+            : `The condition ${step.conditionStr} is FALSE — the loop ends!`;
+        case 'print':         return `Python displays the value on the screen!`;
+        case 'assignment':    return `Python executes: ${step.code}`;
+        case 'loop-back':     return `The loop body is done — jumping back to the top!`;
+        case 'loop-exit':     return `Loop complete! The world comes back into focus.`;
+        case 'loop-break':    return `⛔ break! Python immediately exits the loop — no more iterations.`;
+        case 'loop-continue': return `⏭️ continue! Python skips the rest of this iteration and jumps back to the top.`;
+        default:              return `Executing: ${step.code}`;
     }
 }
 
@@ -586,6 +631,12 @@ document.getElementById('stepBtn').onclick = async () => {
                 break;
             case 'loop-exit':
                 await handleLoopExit(step, stepData);
+                break;
+            case 'loop-break':
+                await handleBreak(step, stepData);
+                break;
+            case 'loop-continue':
+                await handleContinue(step, stepData);
                 break;
             default:
                 console.warn('Unknown step type:', step.type);
@@ -1000,6 +1051,58 @@ async function handleLoopExit(step, stepData) {
     showTeacher("🎉 Loop complete! The world comes back into focus.");
 }
 
+async function handleBreak(step, stepData) {
+    updateActiveLine(editor, step.lineNumber);
+
+    // Save enough state for Back to reconstruct the glass + engine
+    stepData.loopBreakData = {
+        hadGlass:  !!glassState,
+        hadEngine: !!engineRef
+    };
+
+    // 1. Red escape arrow shoots out of the glass pane
+    const endLine = step.loopEndLine !== undefined ? step.loopEndLine : step.lineNumber;
+    await animateBreakArrow(editor, step.lineNumber, endLine);
+
+    // 2. Flash glass pane border red
+    if (glassState && glassState.glassPaneEl) {
+        glassState.glassPaneEl.classList.add('break-flash');
+        await new Promise(r => setTimeout(r, 300));
+        glassState.glassPaneEl.classList.remove('break-flash');
+    }
+
+    // 3. Dissolve glass pane
+    if (glassState) {
+        await dissolveGlassPane(glassState.glassPaneEl, editor, glassState.frostedMarks, glassState.activeLoopMarks);
+        glassState = null;
+    }
+    editor.setOption('styleActiveLine', true);
+    updateActiveLine(editor, null);
+
+    // 4. Shatter (not fade) the engine box
+    if (engineRef) {
+        await disintegrateEngineBox(engineRef);
+        engineRef = null;
+    }
+
+    showTeacher("⛔ break! The loop was forcefully stopped and exits immediately!");
+}
+
+async function handleContinue(step, stepData) {
+    updateActiveLine(editor, step.lineNumber);
+
+    stepData.loopContinueData = {
+        fromLine: step.lineNumber,
+        toLine:   step.toLine
+    };
+
+    // Amber arc arrow back to loop header
+    await animateContinueArrow(editor, step.lineNumber, step.toLine);
+    updateActiveLine(editor, step.toLine);
+
+    showTeacher("⏭️ continue! Python skips the rest of this iteration and jumps back to the top.");
+}
+
 // ============ BACK BUTTON ============
 document.getElementById('backBtn').onclick = async () => {
     if (currentStep === 0) return;
@@ -1080,30 +1183,33 @@ document.getElementById('backBtn').onclick = async () => {
             }
         }
 
-        // Reverse loop-exit (re-create glass + engine if going back into loop)
-        if (lastStepData.loopExitData) {
-            // Need to re-establish glass and engine — find the loop-enter step
+        // Reverse loop-exit OR loop-break (re-create glass + engine to go back inside loop)
+        if (lastStepData.loopExitData || lastStepData.loopBreakData) {
             const loopInfo = getLoopInfo();
             if (loopInfo) {
                 const lastBodyLine = loopInfo.bodyLines[loopInfo.bodyLines.length - 1] || loopInfo.headerLine;
-                glassState = showGlassPane(editor, loopInfo.headerLine, lastBodyLine);
 
-                // Find the loop-enter step to get config
-                const enterStep = executionPlan.find(s => s.type === 'loop-enter');
-                if (enterStep) {
-                    if (enterStep.loopType === 'for') {
-                        engineRef = injectEngineBox(editor, 'for', loopInfo.headerLine, {
-                            iterVar: enterStep.iterVar,
-                            iterableName: enterStep.iterableName,
-                            items: enterStep.items || []
-                        });
-                        // Set token state to last iteration
-                        const lastAssignIdx = findLastIterIndex();
-                        if (lastAssignIdx >= 0) updateForEngine(engineRef.element, lastAssignIdx);
-                    } else {
-                        engineRef = injectEngineBox(editor, 'while', loopInfo.headerLine, {
-                            condition: enterStep.condition || ''
-                        });
+                const needGlass  = lastStepData.loopExitData || lastStepData.loopBreakData.hadGlass;
+                const needEngine = lastStepData.loopExitData || lastStepData.loopBreakData.hadEngine;
+
+                if (needGlass)  glassState = showGlassPane(editor, loopInfo.headerLine, lastBodyLine);
+
+                if (needEngine) {
+                    const enterStep = executionPlan.find(s => s.type === 'loop-enter');
+                    if (enterStep) {
+                        if (enterStep.loopType === 'for') {
+                            engineRef = injectEngineBox(editor, 'for', loopInfo.headerLine, {
+                                iterVar: enterStep.iterVar,
+                                iterableName: enterStep.iterableName,
+                                items: enterStep.items || []
+                            });
+                            const lastAssignIdx = findLastIterIndex();
+                            if (lastAssignIdx >= 0) updateForEngine(engineRef.element, lastAssignIdx);
+                        } else {
+                            engineRef = injectEngineBox(editor, 'while', loopInfo.headerLine, {
+                                condition: enterStep.condition || ''
+                            });
+                        }
                     }
                 }
             }

@@ -28,7 +28,7 @@ window.onload = async () => {
         mode: "python",
         theme: "monokai",
         lineNumbers: true,
-        readOnly: false
+        readOnly: "nocursor"
     });
     
     editor.setValue('length = 10\nbreadth = 20\narea = length * breadth\nprint(area)');
@@ -148,7 +148,7 @@ document.getElementById('runBtn').onclick = async () => {
     } catch (error) {
         await generateErrorExplanation(error, code);
         isRunning = false;
-        editor.setOption("readOnly", false);
+        editor.setOption("readOnly", "nocursor");
         document.getElementById('runBtn').disabled = false;
     }
 };
@@ -788,7 +788,7 @@ function updateButtons() {
     
     if (currentStep >= totalSteps) {
         showTeacher("🎉 Excellent! You've learned how Python calculates area! Try changing values.");
-        editor.setOption("readOnly", false);
+        editor.setOption("readOnly", "nocursor");
         document.getElementById('runBtn').disabled = false;
         isRunning = false;
     }

@@ -13,7 +13,8 @@ window.onload = async () => {
     editor = CodeMirror.fromTextArea(document.getElementById('editor'), {
         mode: "python",
         theme: "monokai",
-        lineNumbers: true
+        lineNumbers: true,
+        readOnly: "nocursor"
     });
     editor.setValue('print("Hello World!")');
 

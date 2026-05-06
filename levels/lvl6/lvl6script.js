@@ -35,7 +35,7 @@ sounds.machineGear.playbackRate = 1.33;
 // ============ INITIALIZATION ============
 window.onload = async () => {
     editor = CodeMirror.fromTextArea(document.getElementById('editor'), {
-        mode: "python", theme: "monokai", lineNumbers: true, readOnly: false
+        mode: "python", theme: "monokai", lineNumbers: true, readOnly: "nocursor"
     });
     editor.setValue('age = int(input())\nif age >= 18:\n    print("Adult")\nelse:\n    print("Minor")');
     setupModeSelector();
@@ -290,7 +290,7 @@ document.getElementById('runBtn').onclick = async () => {
     } catch (error) {
         await generateErrorExplanation(error, editor.getValue());
         isRunning = false;
-        editor.setOption("readOnly", false);
+        editor.setOption("readOnly", "nocursor");
         document.getElementById('runBtn').disabled = false;
     }
 };
@@ -2200,7 +2200,7 @@ function updateButtons() {
     
     if (currentStep >= totalSteps) {
         showTeacher("🎉 Excellent! You've learned if-statements! Try switching modes and run again.");
-        editor.setOption("readOnly", false);
+        editor.setOption("readOnly", "nocursor");
         document.getElementById('runBtn').disabled = false;
         isRunning = false;
     }

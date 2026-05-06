@@ -35,7 +35,7 @@ sounds.machineGear.playbackRate = 1.33; // Speed up from 4s to 3s
 // ============ INITIALIZATION ============
 window.onload = async () => {
     editor = CodeMirror.fromTextArea(document.getElementById('editor'), {
-        mode: "python", theme: "monokai", lineNumbers: true, readOnly: false
+        mode: "python", theme: "monokai", lineNumbers: true, readOnly: "nocursor"
     });
     editor.setValue('a = input()\nb = input()\nprint(a + b)');
     setupModeSelector();
@@ -218,7 +218,7 @@ document.getElementById('runBtn').onclick = async () => {
     } catch (error) {
         await generateErrorExplanation(error, editor.getValue());
         isRunning = false;
-        editor.setOption("readOnly", false);
+        editor.setOption("readOnly", "nocursor");
         document.getElementById('runBtn').disabled = false;
     }
 };
@@ -943,7 +943,7 @@ function updateButtons() {
     if (currentStep >= totalSteps) {
         // Show completion message in teacher bubble (not as a fake "last line explanation")
         showTeacher("🎉 Excellent! You've learned string vs number addition! Try switching modes and run again.");
-        editor.setOption("readOnly", false);
+        editor.setOption("readOnly", "nocursor");
         document.getElementById('runBtn').disabled = false;
         isRunning = false;
     }

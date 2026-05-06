@@ -99,7 +99,7 @@ window.onload = async () => {
         mode: "python",
         theme: "monokai",
         lineNumbers: true,
-        readOnly: false
+        readOnly: "nocursor"
     });
 
     editor.setValue(tabTemplates.create);

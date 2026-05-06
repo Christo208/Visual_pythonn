@@ -473,24 +473,40 @@ button:disabled {
     transition: opacity 0.5s ease;
 }
 
-/* ── ACTIVE LINE CURSOR (inside loop block) ── */
+/* ── ACTIVE LINE CURSOR (inside loop block) ──
+   z-index: 6 places this ABOVE the glass pane (z-index: 1),
+   so it is immune to mix-blend-mode: multiply.
+   Amber (#fbbf24) is the complementary colour to purple — maximum contrast. */
 .loop-active-cursor {
     position: absolute;
     left: 0;
     right: 0;
     pointer-events: none;
-    border-radius: 4px;
-    background: rgba(255, 0, 0, 0.215);
-    border-left: 4px solid transparent;
+    border-radius: 0;
+    background: rgba(251, 191, 36, 0.10);
+    border-left: 4px solid #fbbf24;
+    box-shadow:
+        inset 5px 0 24px rgba(251, 191, 36, 0.18),
+        inset 0 0 0 1px rgba(251, 191, 36, 0.06);
     z-index: 6;
-    transition: top 0.25s ease, opacity 0.25s ease;
+    transition: top 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
 }
 
 /* Kill CodeMirror's default activeline highlight when inside loop block */
 .loop-active .CodeMirror-activeline-background {
     background: transparent !important;
 }
-.loop-active .CodeMirror-line span { background: transparent !important; }
+
+/* Kill ALL per-token visual artifacts inside the loop block
+   (backgrounds, outlines, borders, shadows — anything that made
+   individual syntax tokens look like separate pink boxes) */
+.loop-active .CodeMirror-line span {
+    background:      transparent !important;
+    outline:         none        !important;
+    border:          none        !important;
+    box-shadow:      none        !important;
+    text-decoration: none        !important;
+}
 
 /* Lift engine box widgets above the glass pane */
 .CodeMirror-linewidget {
@@ -789,19 +805,24 @@ button:disabled {
     transition: background-color 0.15s ease;
 }
 
-/* Step line highlight without token gaps */
+/* Step line highlight — outside loop only: subtle white bar */
 .step-line-highlight {
-    background-color: rgba(255, 255, 255, 0.18);
+    background-color: rgba(255, 255, 255, 0.13);
 }
-/* Only boost brightness when active line is inside the loop block */
+
+/* Inside the loop the cursor (z-index:6, above glass) does the visual work.
+   Here we only boost text brightness — no background that would blend
+   with mix-blend-mode: multiply on the glass pane and become invisible. */
 .loop-active.step-line-highlight {
-    background-color: rgba(255, 255, 255, 0.28);
+    background: transparent !important;
+    box-shadow: none !important;
 }
+
 .loop-active.step-line-highlight .CodeMirror-line {
     position: relative;
-    z-index: 2;
-    filter: brightness(2.1);
-    text-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+    z-index: 3;
+    filter: brightness(2.2);
+    text-shadow: 0 0 12px rgba(251, 191, 36, 0.35);
 }
 
 /* ============ VARIABLE BOX PULSE (for value updates) ============ */
@@ -824,4 +845,33 @@ button:disabled {
 
 .variable-box.pulse-update {
     animation: value-pulse 0.5s ease;
+}
+
+/* ============ BREAK ANIMATIONS ============ */
+.loop-glass-pane.break-flash {
+    border-left-color: #ef4444 !important;
+    box-shadow: 0 0 32px rgba(239,68,68,0.75), inset 0 0 18px rgba(239,68,68,0.25) !important;
+    transition: border-left-color 0.08s ease, box-shadow 0.08s ease;
+}
+.loop-break-arrow path {
+    stroke: #ef4444 !important;
+    filter: drop-shadow(0 0 8px rgba(239,68,68,0.9)) !important;
+}
+.loop-break-arrow polygon {
+    fill: #ef4444 !important;
+    filter: drop-shadow(0 0 6px rgba(239,68,68,0.9)) !important;
+}
+
+/* ============ CONTINUE ANIMATIONS ============ */
+.line-continue-sweep {
+    background-color: rgba(245,158,11,0.22) !important;
+    transition: background-color 0.15s ease;
+}
+.loop-continue-arrow path {
+    stroke: #f59e0b !important;
+    filter: drop-shadow(0 0 6px rgba(245,158,11,0.8)) !important;
+}
+.loop-continue-arrow polygon {
+    fill: #f59e0b !important;
+    filter: drop-shadow(0 0 6px rgba(245,158,11,0.8)) !important;
 }

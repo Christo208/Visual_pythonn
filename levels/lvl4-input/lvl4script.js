@@ -34,7 +34,7 @@ window.onload = async () => {
         mode: "python",
         theme: "monokai",
         lineNumbers: true,
-        readOnly: false
+        readOnly: "nocursor"
     });
     
     editor.setValue('name = input("Enter your name: ")\nprint(name)');
@@ -458,7 +458,7 @@ function updateButtons() {
     document.getElementById('stepBtn').disabled = (currentStep >= totalSteps);
     if (currentStep >= totalSteps) {
         showTeacher("🎉 Excellent! You've learned how Python gets input from users!");
-        editor.setOption("readOnly", false);
+        editor.setOption("readOnly", "nocursor");
         document.getElementById('runBtn').disabled = false;
         isRunning = false;
     }
